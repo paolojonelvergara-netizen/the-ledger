@@ -9,11 +9,11 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
-    --bg1:#EEF3FD; --bg2:#E2ECFC;
-    --card:#FFFFFF; --card-soft:#F4F8FE;
-    --border:#DCE6F8; --ink:#122040; --muted:#48588A; --faint:#8E9DC5;
-    --personal:#2F6FED; --company:#16296E; --summary:#0EA5E9; --cc:#7048E8;
-    --green:#1E8E5A; --red:#D64545;
+    --bg1:#0A1224; --bg2:#0E1830;
+    --card:#111B33; --card-soft:#16223F;
+    --border:#293A63; --ink:#EAF0FF; --muted:#93A2C9; --faint:#5E6E99;
+    --personal:#4C8DFF; --company:#22D3EE; --summary:#38BDF8; --cc:#A78BFA;
+    --green:#34D399; --red:#F87171;
   }
   *{box-sizing:border-box;}
   body{
@@ -26,90 +26,92 @@
   .wrap{max-width:920px;margin:0 auto;padding:36px 20px 70px;}
   .header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:26px;}
   .header-left{display:flex;align-items:center;gap:12px;}
-  h1{font-size:34px;font-weight:800;margin:0;letter-spacing:-.3px;color:var(--ink);}
-  #syncStatus{font-size:13px;color:var(--faint);font-weight:600;}
-  .tabs{display:flex;gap:8px;margin-bottom:-1px;flex-wrap:wrap;}
+  h1{font-size:32px;font-weight:800;margin:0;letter-spacing:1px;color:var(--ink);text-transform:uppercase;}
+  #syncStatus{font-size:12px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.6px;}
+  .tabs{display:flex;gap:4px;margin-bottom:0;flex-wrap:wrap;}
   .tab{
-    padding:13px 22px;border-radius:14px 14px 0 0;border:1px solid var(--border);
-    background:#DCE6FA;color:var(--faint);font-weight:700;font-size:14.5px;
-    position:relative;top:1px;cursor:pointer;transition:background .15s;
+    padding:13px 22px;border-radius:0;border:1px solid var(--border);border-bottom:none;
+    background:var(--card-soft);color:var(--faint);font-weight:700;font-size:13px;
+    text-transform:uppercase;letter-spacing:.6px;
+    position:relative;cursor:pointer;transition:background .15s;
   }
-  .tab.active{background:var(--card);border-bottom:1px solid var(--card);}
-  .tab.active[data-t="personal"]{color:var(--personal);border-color:var(--personal);}
-  .tab.active[data-t="company"]{color:var(--company);border-color:var(--company);}
-  .tab.active[data-t="summary"]{color:var(--summary);border-color:var(--summary);}
-  .tab.active[data-t="creditcards"]{color:var(--cc);border-color:var(--cc);}
+  .tab.active{background:var(--card);color:var(--ink);}
+  .tab.active[data-t="personal"]{color:var(--personal);box-shadow:inset 0 3px 0 var(--personal);}
+  .tab.active[data-t="company"]{color:var(--company);box-shadow:inset 0 3px 0 var(--company);}
+  .tab.active[data-t="summary"]{color:var(--summary);box-shadow:inset 0 3px 0 var(--summary);}
+  .tab.active[data-t="creditcards"]{color:var(--cc);box-shadow:inset 0 3px 0 var(--cc);}
   .panel{
-    background:var(--card);border:1px solid var(--border);border-radius:0 18px 18px 18px;
-    padding:30px;box-shadow:0 8px 28px rgba(20,50,120,.08);
+    background:var(--card);border:1px solid var(--border);border-radius:0;
+    padding:30px;box-shadow:0 12px 32px rgba(0,0,0,.35);
   }
-  .panel.personal{border-top:4px solid var(--personal);}
-  .panel.company{border-top:4px solid var(--company);}
-  .panel.summary{border-top:4px solid var(--summary);}
-  .panel.creditcards{border-top:4px solid var(--cc);}
-  .cc-card{background:var(--card-soft);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:18px;}
+  .panel.personal{border-top:3px solid var(--personal);}
+  .panel.company{border-top:3px solid var(--company);}
+  .panel.summary{border-top:3px solid var(--summary);}
+  .panel.creditcards{border-top:3px solid var(--cc);}
+  .cc-card{background:var(--card-soft);border:1px solid var(--border);border-radius:0;padding:18px;margin-bottom:18px;}
   .cc-card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;flex-wrap:wrap;}
-  .cc-card-title{font-family:'Sora',sans-serif;font-weight:700;font-size:17px;color:var(--ink);}
-  .cc-card-sub{font-size:12.5px;color:var(--faint);margin-top:2px;}
-  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:28px;}
-  .stats-flex{display:flex;flex-wrap:wrap;gap:14px;}
+  .cc-card-title{font-family:'Sora',sans-serif;font-weight:700;font-size:16px;color:var(--ink);text-transform:uppercase;letter-spacing:.5px;}
+  .cc-card-sub{font-size:12px;color:var(--faint);margin-top:2px;}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-bottom:28px;background:var(--border);}
+  .stats-flex{display:flex;flex-wrap:wrap;gap:1px;background:var(--border);}
   .total-accounts-card{
     background:linear-gradient(135deg, var(--summary), var(--personal));
-    border-radius:16px;padding:22px 26px;color:#fff;
-    box-shadow:0 6px 20px rgba(14,165,233,.25);
+    border-radius:0;padding:22px 26px;color:#0A1224;
+    box-shadow:0 6px 20px rgba(56,189,248,.2);
   }
-  .total-accounts-card .lbl{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;opacity:.9;margin-bottom:6px;}
+  .total-accounts-card .lbl{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;opacity:.85;margin-bottom:6px;}
   .total-accounts-card .val{font-size:32px;font-weight:800;font-family:'IBM Plex Mono',monospace;}
   .stats-flex .stat{flex:1 1 150px;}
-  .stat{padding:18px;background:var(--card-soft);border:1px solid var(--border);border-radius:14px;}
-  .stat .lbl{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
-  .stat .val{font-size:24px;font-weight:700;}
+  .stat{padding:18px;background:var(--card-soft);border:none;border-radius:0;}
+  .stat .lbl{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;}
+  .stat .val{font-size:22px;font-weight:700;}
   .goal-row{display:flex;align-items:center;gap:10px;margin-top:8px;}
-  .goal-track{flex:1;height:12px;background:var(--border);border-radius:8px;overflow:hidden;}
+  .goal-track{flex:1;height:10px;background:var(--border);border-radius:0;overflow:hidden;}
   .goal-fill{height:100%;transition:width .3s;}
   .goal-num{font-size:13px;color:var(--muted);min-width:120px;text-align:right;font-weight:600;}
   .goal-set{display:flex;gap:8px;margin-top:10px;}
   input,select,button{font-family:'Inter',sans-serif;font-size:14.5px;}
-  input,select{padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;background:var(--card-soft);color:var(--ink);}
+  input,select{padding:10px 12px;border:1.5px solid var(--border);border-radius:0;background:var(--card-soft);color:var(--ink);}
+  input::placeholder{color:var(--faint);}
   input:focus,select:focus{outline:2px solid var(--personal);outline-offset:1px;}
-  .btn{border:none;border-radius:10px;font-weight:700;cursor:pointer;padding:10px 20px;color:#fff;background:var(--personal);}
-  .btn-outline{background:transparent;border:1.5px solid;}
+  .btn{border:none;border-radius:0;font-weight:800;cursor:pointer;padding:10px 20px;color:#0A1224;background:var(--personal);text-transform:uppercase;letter-spacing:.6px;font-size:13px;}
+  .btn-outline{background:transparent;border:1.5px solid;color:var(--ink);}
   .btn:disabled{opacity:.5;cursor:default;}
-  .form-box{margin:24px 0;padding:18px;background:var(--card-soft);border:1px solid var(--border);border-radius:14px;}
+  .form-box{margin:24px 0;padding:18px;background:var(--card-soft);border:1px solid var(--border);border-radius:0;}
   .form-box.editing{border:1.5px solid var(--personal);}
-  .form-title{font-size:14px;font-weight:700;margin-bottom:12px;color:var(--muted);display:flex;align-items:center;justify-content:space-between;}
+  .form-title{font-size:12px;font-weight:800;margin-bottom:12px;color:var(--muted);display:flex;align-items:center;justify-content:space-between;text-transform:uppercase;letter-spacing:.8px;}
   .form-row{display:flex;flex-wrap:wrap;gap:10px;}
   .form-row input:nth-child(1){flex:2 1 160px;}
   .cols{display:grid;grid-template-columns:1fr 1fr;gap:26px;}
-  @media(max-width:640px){.cols{grid-template-columns:1fr;} .stats{grid-template-columns:1fr;} .header{flex-direction:column;align-items:flex-start;gap:6px;} h1{font-size:28px;} .panel{padding:20px;}}
-  .sec-title{font-size:14px;font-weight:700;margin-bottom:12px;color:var(--muted);}
-  .tx-list{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
-  .tx{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--card-soft);border:1px solid var(--border);border-radius:12px;gap:8px;}
+  @media(max-width:640px){.cols{grid-template-columns:1fr;} .stats{grid-template-columns:1fr;} .header{flex-direction:column;align-items:flex-start;gap:6px;} h1{font-size:24px;} .panel{padding:20px;}}
+  .sec-title{font-size:12px;font-weight:800;margin-bottom:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;}
+  .tx-list{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:1px;background:var(--border);}
+  .tx{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--card-soft);border:none;border-radius:0;gap:8px;}
   .tx .desc{font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;}
-  .tx .meta{font-size:12.5px;color:var(--faint);margin-top:2px;}
+  .tx .meta{font-size:12px;color:var(--faint);margin-top:2px;}
   .tx .amt{font-family:'IBM Plex Mono',monospace;font-size:14.5px;font-weight:700;}
   .tx-actions{display:flex;align-items:center;gap:2px;}
-  .icon-btn{background:none;border:none;color:#B7C3E4;cursor:pointer;padding:3px;font-size:15px;line-height:1;border-radius:6px;}
-  .icon-btn:hover{color:var(--personal);background:#E4ECFC;}
+  .icon-btn{background:none;border:none;color:var(--faint);cursor:pointer;padding:3px;font-size:15px;line-height:1;border-radius:0;}
+  .icon-btn:hover{color:var(--personal);background:var(--border);}
   .icon-btn:disabled{opacity:.25;cursor:default;}
-  .icon-btn:disabled:hover{color:#B7C3E4;background:none;}
+  .icon-btn:disabled:hover{color:var(--faint);background:none;}
   .order-arrows{display:flex;flex-direction:column;gap:0;}
   .order-arrows .icon-btn{font-size:11px;padding:1px 3px;}
   .empty{font-size:14px;color:var(--faint);font-style:italic;}
   .cat-bars{display:flex;flex-direction:column;gap:10px;}
-  .cat-bar-row .cat-lbl{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:4px;font-weight:600;}
-  .cat-bar-track{height:9px;background:var(--border);border-radius:6px;overflow:hidden;}
-  .cat-bar-fill{height:100%;border-radius:6px;}
-  footer{font-size:12.5px;color:var(--faint);margin-top:18px;text-align:center;}
-  .config-warning{background:#FFF4E5;border:1px solid #F0C481;color:#8A5A0F;padding:16px 18px;border-radius:12px;font-size:14px;margin-bottom:24px;line-height:1.6;}
-  .config-warning code{background:#FBE4B8;padding:2px 6px;border-radius:5px;}
-  .month-table{width:100%;border-collapse:collapse;font-size:13.5px;}
-  .month-table th{text-align:right;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);padding:8px;border-bottom:2px solid var(--border);}
+  .cat-bar-row .cat-lbl{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
+  .cat-bar-track{height:8px;background:var(--border);border-radius:0;overflow:hidden;}
+  .cat-bar-fill{height:100%;border-radius:0;}
+  footer{font-size:12px;color:var(--faint);margin-top:18px;text-align:center;}
+  .config-warning{background:#2E2308;border:1px solid #6B5219;color:#F0C481;padding:16px 18px;border-radius:0;font-size:14px;margin-bottom:24px;line-height:1.6;}
+  .config-warning code{background:#4A3812;padding:2px 6px;border-radius:0;color:#FBE4B8;}
+  .month-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .month-table th{text-align:right;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--faint);padding:8px;border-bottom:2px solid var(--border);}
   .month-table th:first-child{text-align:left;}
   .month-table td{padding:10px 8px;text-align:right;border-bottom:1px solid var(--border);}
   .month-table td:first-child{text-align:left;font-weight:700;}
   .month-table tr:last-child td{border-bottom:none;}
-  .cancel-link{background:none;border:none;color:var(--faint);font-size:12.5px;font-weight:600;cursor:pointer;text-decoration:underline;}
+  .cancel-link{background:none;border:none;color:var(--faint);font-size:12px;font-weight:700;cursor:pointer;text-decoration:underline;text-transform:uppercase;letter-spacing:.4px;}
 </style>
 </head>
 <body>
@@ -143,7 +145,7 @@
     <div class="stats-flex" id="sourceStats" style="margin-bottom:8px"></div>
     <div style="margin-bottom:22px">
       <button class="cancel-link" id="toggleStartingBal" style="text-decoration:none">Manage accounts ▾</button>
-      <div id="startingBalBox" style="display:none;margin-top:10px;padding:14px;background:var(--card-soft);border:1px solid var(--border);border-radius:12px">
+      <div id="startingBalBox" style="display:none;margin-top:10px;padding:14px;background:var(--card-soft);border:1px solid var(--border);border-radius:0">
         <div id="sourceInputsList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
         <div class="form-row" style="margin-bottom:10px">
           <button class="btn" id="sbSaveBtn">Save balances</button>
@@ -167,7 +169,7 @@
       </div>
     </div>
 
-    <div id="installmentSummary" style="display:none;margin-top:18px;padding:14px 16px;background:var(--card-soft);border:1px solid var(--border);border-radius:12px">
+    <div id="installmentSummary" style="display:none;margin-top:18px;padding:14px 16px;background:var(--card-soft);border:1px solid var(--border);border-radius:0">
       <div class="sec-title" style="margin-bottom:6px">Installments outstanding</div>
       <div class="val mono" id="installmentTotal" style="font-size:20px;font-weight:700;color:var(--red)">0.00</div>
     </div>
@@ -186,7 +188,7 @@
         </select>
         <input id="fCatOther" placeholder="Enter category" style="display:none"/>
         <select id="fCcCard" style="display:none"></select>
-        <div id="fCcCardInfo" style="display:none;flex-basis:100%;font-size:12.5px;color:var(--muted);background:#EFEAFC;border:1px solid var(--border);border-radius:8px;padding:8px 12px"></div>
+        <div id="fCcCardInfo" style="display:none;flex-basis:100%;font-size:12.5px;color:var(--muted);background:var(--card-soft);border:1px solid var(--cc);border-radius:0;padding:8px 12px"></div>
         <select id="fRecurrence">
           <option value="one-time">One-time</option>
           <option value="recurring">Recurring</option>
@@ -198,11 +200,11 @@
         </select>
         <input id="fTotalAmt" type="number" placeholder="Total cost" style="display:none"/>
         <input id="fPaidAmt" type="number" placeholder="Paid so far" style="display:none"/>
-        <div id="installmentAutoInfo" style="display:none;flex-basis:100%;font-size:12.5px;color:var(--muted);background:#EAF1FE;border:1px solid var(--border);border-radius:8px;padding:8px 12px"></div>
+        <div id="installmentAutoInfo" style="display:none;flex-basis:100%;font-size:12.5px;color:var(--muted);background:var(--card-soft);border:1px solid var(--personal);border-radius:0;padding:8px 12px"></div>
         <select id="fSource"></select>
         <input id="fAmt" type="number" placeholder="Amount"/>
         <select id="fType"><option value="expense">Expense</option><option value="income">Income</option></select>
-        <label id="receiptLabel" style="flex:1 1 220px;display:flex;align-items:center;gap:8px;cursor:pointer;padding:9px 12px;border:1.5px dashed var(--border);border-radius:10px;font-size:13.5px;color:var(--muted)">
+        <label id="receiptLabel" style="flex:1 1 220px;display:flex;align-items:center;gap:8px;cursor:pointer;padding:9px 12px;border:1.5px dashed var(--border);border-radius:0;font-size:13.5px;color:var(--muted)">
           📎 <span id="receiptLabelText">Attach receipt (photo or PDF)</span>
           <input id="fReceipt" type="file" accept="image/*,application/pdf" style="display:none"/>
         </label>
@@ -955,7 +957,7 @@ function renderAccountPanel(){
       if(hasItems) extras.push(`<button class="cancel-link" data-toggle-items="${t.id}" style="text-decoration:none">🧾 ${t.line_items.length} items</button>`);
       const extrasHtml = extras.length ? `<div class="meta" style="margin-top:3px">${extras.join(' · ')}</div>` : '';
       const itemsBreakdown = hasItems ? `
-        <div id="items-${t.id}" style="display:none;margin-top:6px;padding:8px 10px;background:var(--bg1);border-radius:8px;font-size:12.5px">
+        <div id="items-${t.id}" style="display:none;margin-top:6px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:0;font-size:12.5px">
           ${t.line_items.map(i=>`<div style="display:flex;justify-content:space-between;padding:2px 0"><span>${escapeHtml(i.description)}</span><span class="mono">${fmt(i.amount)}</span></div>`).join('')}
         </div>` : '';
 
@@ -1222,7 +1224,7 @@ function renderCreditCardsTab(){
         </div>
       </div>
 
-      <div id="ccEditBox-${card.id}" style="display:none;margin-bottom:14px;padding:12px;background:var(--card);border:1px solid var(--border);border-radius:10px">
+      <div id="ccEditBox-${card.id}" style="display:none;margin-bottom:14px;padding:12px;background:var(--card);border:1px solid var(--border);border-radius:0">
         <div class="form-row">
           <input id="ccEditName-${card.id}" value="${escapeHtml(card.name)}" placeholder="Card name"/>
           <input id="ccEditNumber-${card.id}" value="${escapeHtml(card.number||'')}" placeholder="Last 4 digits"/>
@@ -1249,7 +1251,7 @@ function renderCreditCardsTab(){
         <input id="ccAmt-${card.id}" type="number" placeholder="Amount"/>
         <button class="btn" data-add-charge="${card.id}" style="background:var(--cc)">+ Add charge</button>
       </div>
-      <div id="ccAutoInfo-${card.id}" style="display:none;font-size:12.5px;color:var(--muted);background:#EFEAFC;border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:10px"></div>
+      <div id="ccAutoInfo-${card.id}" style="display:none;font-size:12.5px;color:var(--muted);background:var(--card-soft);border:1px solid var(--cc);border-radius:0;padding:8px 12px;margin-bottom:10px"></div>
 
       <div class="tx-list" id="ccCharges-${card.id}"></div>`;
     container.appendChild(wrap);
