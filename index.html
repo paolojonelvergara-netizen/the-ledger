@@ -120,7 +120,6 @@
       <h1 class="display">The Ledger</h1>
     </div>
     <div style="display:flex;align-items:center;gap:14px">
-      <button class="cancel-link" id="toggleVisibilityBtn" style="text-decoration:none;font-size:13px">🙈 Hide figures</button>
       <span id="syncStatus">Connecting…</span>
     </div>
   </div>
@@ -324,18 +323,26 @@ let editingId = null;
 
 function fmt(n){ n = Number(n)||0; return n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
-let figuresHidden = localStorage.getItem('ledger-hide-figures') === '1';
-function dfmt(n){ return figuresHidden ? '••••••' : fmt(n); }
-function updateVisibilityBtn(){
-  document.getElementById('toggleVisibilityBtn').textContent = figuresHidden ? '👁️ Show figures' : '🙈 Hide figures';
-}
-document.getElementById('toggleVisibilityBtn').addEventListener('click', ()=>{
-  figuresHidden = !figuresHidden;
-  localStorage.setItem('ledger-hide-figures', figuresHidden ? '1' : '0');
-  updateVisibilityBtn();
+let hiddenFigures = new Set(JSON.parse(localStorage.getItem('ledger-hidden-figures') || '[]'));
+function saveHiddenFigures(){ localStorage.setItem('ledger-hidden-figures', JSON.stringify(Array.from(hiddenFigures))); }
+function toggleFigure(key){
+  if(hiddenFigures.has(key)) hiddenFigures.delete(key); else hiddenFigures.add(key);
+  saveHiddenFigures();
   render();
-});
-updateVisibilityBtn();
+}
+function statCard(key, label, value, labelStyle){
+  const hidden = hiddenFigures.has(key);
+  return `<div class="stat" style="position:relative">
+    <button class="icon-btn" data-toggle-fig="${escapeHtml(key)}" style="position:absolute;top:6px;right:6px;font-size:11px;padding:2px 5px" title="${hidden?'Show':'Hide'} this figure">${hidden?'👁️':'🙈'}</button>
+    <div class="lbl" style="${labelStyle||''}">${escapeHtml(label)}</div>
+    <div class="val mono">${hidden ? '••••••' : fmt(value)}</div>
+  </div>`;
+}
+function wireFigureToggles(container){
+  container.querySelectorAll('[data-toggle-fig]').forEach(btn=>{
+    btn.addEventListener('click', ()=>toggleFigure(btn.dataset.toggleFig));
+  });
+}
 function setStatus(text){ document.getElementById('syncStatus').textContent = text; }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function ownerOf(id){ return data.personal.transactions.some(t=>t.id===id) ? 'personal' : 'company'; }
@@ -727,13 +734,16 @@ function renderSourceStats(containerId, totalContainerId){
     box.innerHTML = '<div class="empty">No accounts yet — add one under "Manage accounts" below.</div>';
   } else {
     const total = names.reduce((s,name)=>s+sourceBalance(name),0);
-    totalBox.innerHTML = `<div class="lbl">Total Across Accounts</div><div class="val">${dfmt(total)}</div>`;
+    const totalHidden = hiddenFigures.has('total-accounts');
+    totalBox.innerHTML = `
+      <button class="icon-btn" data-toggle-fig="total-accounts" style="position:absolute;top:14px;right:14px;font-size:13px;padding:3px 6px;color:#fff;background:rgba(255,255,255,.18)" title="${totalHidden?'Show':'Hide'} this figure">${totalHidden?'👁️':'🙈'}</button>
+      <div class="lbl">Total Across Accounts</div><div class="val">${totalHidden ? '••••••' : fmt(total)}</div>`;
+    totalBox.style.position = 'relative';
+    wireFigureToggles(totalBox);
     names.forEach(name=>{
-      const div = document.createElement('div');
-      div.className = 'stat';
-      div.innerHTML = `<div class="lbl" style="color:var(--muted)">${escapeHtml(name)}</div><div class="val mono">${dfmt(sourceBalance(name))}</div>`;
-      box.appendChild(div);
+      box.innerHTML += statCard(`account-${name}`, name, sourceBalance(name), 'color:var(--muted)');
     });
+    wireFigureToggles(box);
   }
 }
 
@@ -872,20 +882,21 @@ function renderAccountPanel(){
 
   const topStats = document.getElementById('topStats');
   if(tab === 'personal'){
-    topStats.innerHTML = `
-      <div class="stat"><div class="lbl" style="color:${accent}">Balance</div><div class="val mono">${dfmt(balance)}</div></div>
-      <div class="stat"><div class="lbl" style="color:var(--green)">Income</div><div class="val mono">${dfmt(income)}</div></div>
-      <div class="stat"><div class="lbl" style="color:var(--red)">Expenses</div><div class="val mono">${dfmt(expense)}</div></div>`;
+    topStats.innerHTML =
+      statCard('personal-balance', 'Balance', balance, `color:${accent}`) +
+      statCard('personal-income', 'Income', income, 'color:var(--green)') +
+      statCard('personal-expense', 'Expenses', expense, 'color:var(--red)');
   } else {
     const expenses = acc.transactions.filter(t=>t.type==='expense');
     const budgetedExp = expenses.filter(t=>(t.budget_status||'budgeted')!=='not_budgeted').reduce((s,t)=>s+Number(t.amount),0);
     const notBudgetedExp = expenses.filter(t=>t.budget_status==='not_budgeted').reduce((s,t)=>s+Number(t.amount),0);
-    topStats.innerHTML = `
-      <div class="stat"><div class="lbl" style="color:${accent}">Budget Balance</div><div class="val mono">${dfmt(balance)}</div></div>
-      <div class="stat"><div class="lbl" style="color:var(--green)">Budgeted</div><div class="val mono">${dfmt(income)}</div></div>
-      <div class="stat"><div class="lbl" style="color:var(--muted)">Budgeted Expenses</div><div class="val mono">${dfmt(budgetedExp)}</div></div>
-      <div class="stat"><div class="lbl" style="color:var(--red)">Not Budgeted Expenses</div><div class="val mono">${dfmt(notBudgetedExp)}</div></div>`;
+    topStats.innerHTML =
+      statCard('company-balance', 'Budget Balance', balance, `color:${accent}`) +
+      statCard('company-budgeted', 'Budgeted', income, 'color:var(--green)') +
+      statCard('company-budgeted-exp', 'Budgeted Expenses', budgetedExp, 'color:var(--muted)') +
+      statCard('company-not-budgeted-exp', 'Not Budgeted Expenses', notBudgetedExp, 'color:var(--red)');
   }
+  wireFigureToggles(topStats);
 
   document.getElementById('goalLbl').textContent = LABELS[tab].goalLabel;
 
