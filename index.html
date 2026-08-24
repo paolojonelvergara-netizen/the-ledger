@@ -122,9 +122,22 @@
       <h1 class="display">The Ledger</h1>
     </div>
     <div style="display:flex;align-items:center;gap:14px">
+      <button class="cancel-link" id="signOutBtn" style="display:none">Sign Out</button>
       <span id="syncStatus">Connecting…</span>
     </div>
   </div>
+
+  <div id="authScreen" style="display:none;max-width:380px;margin:60px auto;padding:30px;background:var(--card);border:1px solid var(--border)">
+    <div class="sec-title" style="font-size:16px;margin-bottom:18px;color:var(--ink)">Sign In</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <input id="authEmail" type="email" placeholder="Email" autocomplete="username"/>
+      <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password"/>
+      <button class="btn" id="authSignInBtn">Sign In</button>
+      <div id="authError" style="display:none;color:var(--red);font-size:13px"></div>
+    </div>
+  </div>
+
+  <div id="appRoot" style="display:none">
 
   <div id="configWarning" class="config-warning" style="display:none">
     This site isn't connected to a database yet. Open <code>index.html</code>, find <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> near the top of the script, and paste in your values from Supabase → Project Settings → API.
@@ -285,6 +298,8 @@
   </div>
 
   <footer>Synced with your Supabase database — the same numbers show up on every device you open this site from. Use the date field to log entries for past months. Only this month's entries can be reordered.</footer>
+
+  </div>
 </div>
 
 <script>
@@ -300,6 +315,55 @@ if (isConfigured) {
 } else {
   document.getElementById('configWarning').style.display = 'block';
   document.getElementById('syncStatus').textContent = 'Not connected';
+}
+
+// ── Auth gate ───────────────────────────────────────────────
+function showAuthScreen(){
+  document.getElementById('authScreen').style.display = '';
+  document.getElementById('appRoot').style.display = 'none';
+  document.getElementById('signOutBtn').style.display = 'none';
+}
+function showApp(){
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('appRoot').style.display = '';
+  document.getElementById('signOutBtn').style.display = '';
+}
+
+document.getElementById('authSignInBtn').addEventListener('click', async ()=>{
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const errEl = document.getElementById('authError');
+  errEl.style.display = 'none';
+  if(!email || !password) return;
+  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  if(error){
+    errEl.textContent = error.message;
+    errEl.style.display = '';
+  }
+});
+document.getElementById('authPassword').addEventListener('keydown', e=>{
+  if(e.key === 'Enter') document.getElementById('authSignInBtn').click();
+});
+
+document.getElementById('signOutBtn').addEventListener('click', async ()=>{
+  await supabaseClient.auth.signOut();
+});
+
+async function initAuth(){
+  if(!supabaseClient){ showApp(); loadAll(); return; }
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if(session){ showApp(); loadAll(); } else { showAuthScreen(); }
+
+  supabaseClient.auth.onAuthStateChange((event, session)=>{
+    if(event === 'SIGNED_IN'){
+      showApp();
+      document.getElementById('authEmail').value = '';
+      document.getElementById('authPassword').value = '';
+      loadAll();
+    } else if(event === 'SIGNED_OUT'){
+      showAuthScreen();
+    }
+  });
 }
 
 const CATEGORY_COLORS = {
@@ -582,7 +646,7 @@ function startEdit(t){
   lineItems = Array.isArray(t.line_items) ? t.line_items.map(i=>({description:i.description, amount:Number(i.amount)||0})) : [];
   renderLineItems();
   document.getElementById('fReceipt').value = '';
-  document.getElementById('receiptLabelText').textContent = t.receipt_url ? 'Receipt attached — choose a file to replace' : 'Attach receipt (photo or PDF)';
+  document.getElementById('receiptLabelText').textContent = t.receipt_path ? 'Receipt attached — choose a file to replace' : 'Attach receipt (photo or PDF)';
   updateFormVisibility();
   if(t.source) document.getElementById('fSource').value = t.source;
   if(t.card_id){ document.getElementById('fCcCard').value = t.card_id; updateFormVisibility(); }
@@ -630,7 +694,7 @@ document.getElementById('addBtn').addEventListener('click', async ()=>{
     : null;
   if(row.line_items && row.line_items.length === 0) row.line_items = null;
 
-  row.receipt_url = editingId ? undefined : null; // undefined = leave column untouched on update unless a new file is chosen
+  row.receipt_path = editingId ? undefined : null; // undefined = leave column untouched on update unless a new file is chosen
   const receiptFile = document.getElementById('fReceipt').files[0];
   if(receiptFile){
     if(supabaseClient){
@@ -638,13 +702,12 @@ document.getElementById('addBtn').addEventListener('click', async ()=>{
       const path = `${tab}/${Date.now()}_${receiptFile.name}`;
       const { error: upErr } = await supabaseClient.storage.from('receipts').upload(path, receiptFile);
       if(upErr){ console.error(upErr); setStatus('Receipt upload failed'); return; }
-      const { data: pub } = supabaseClient.storage.from('receipts').getPublicUrl(path);
-      row.receipt_url = pub.publicUrl;
+      row.receipt_path = path;
     } else {
-      row.receipt_url = URL.createObjectURL(receiptFile);
+      row.receipt_path = null;
     }
   }
-  if(row.receipt_url === undefined) delete row.receipt_url;
+  if(row.receipt_path === undefined) delete row.receipt_path;
 
   if(editingId){
     const id = editingId;
@@ -953,7 +1016,7 @@ function renderAccountPanel(){
 
       const hasItems = Array.isArray(t.line_items) && t.line_items.length > 0;
       const extras = [];
-      if(t.receipt_url) extras.push(`<a href="${t.receipt_url}" target="_blank" rel="noopener" style="color:var(--personal);text-decoration:none;font-weight:600">📎 Receipt</a>`);
+      if(t.receipt_path) extras.push(`<button class="cancel-link" data-view-receipt="${t.id}" style="text-decoration:none">📎 Receipt</button>`);
       if(hasItems) extras.push(`<button class="cancel-link" data-toggle-items="${t.id}" style="text-decoration:none">🧾 ${t.line_items.length} items</button>`);
       const extrasHtml = extras.length ? `<div class="meta" style="margin-top:3px">${extras.join(' · ')}</div>` : '';
       const itemsBreakdown = hasItems ? `
@@ -976,6 +1039,8 @@ function renderAccountPanel(){
         </div>`;
       row.querySelector('[data-del]').addEventListener('click', ()=>removeTx(t.id));
       row.querySelector('[data-edit]').addEventListener('click', ()=>startEdit(t));
+      const receiptBtn = row.querySelector('[data-view-receipt]');
+      if(receiptBtn) receiptBtn.addEventListener('click', ()=>viewReceipt(t.receipt_path));
       const toggleBtn = row.querySelector('[data-toggle-items]');
       if(toggleBtn) toggleBtn.addEventListener('click', ()=>{
         const el = document.getElementById(`items-${t.id}`);
@@ -1453,13 +1518,21 @@ function renderCcSummary(){
   });
 }
 
+async function viewReceipt(path){
+  if(!path) return;
+  if(!supabaseClient){ alert('Receipts require a live Supabase connection.'); return; }
+  const { data, error } = await supabaseClient.storage.from('receipts').createSignedUrl(path, 120);
+  if(error){ console.error(error); alert('Could not open receipt.'); return; }
+  window.open(data.signedUrl, '_blank', 'noopener');
+}
+
 function escapeHtml(s){
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML;
 }
 
-loadAll();
+initAuth();
 </script>
 </body>
 </html>
