@@ -1,0 +1,1452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg1:#EEF3FD; --bg2:#E2ECFC;
+    --card:#FFFFFF; --card-soft:#F4F8FE;
+    --border:#DCE6F8; --ink:#122040; --muted:#48588A; --faint:#8E9DC5;
+    --personal:#2F6FED; --company:#16296E; --summary:#0EA5E9; --cc:#7048E8;
+    --green:#1E8E5A; --red:#D64545;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:'Inter',sans-serif; color:var(--ink); font-size:15px;
+    background:linear-gradient(160deg, var(--bg1), var(--bg2) 60%, var(--bg1));
+    min-height:100vh;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  .display{font-family:'Sora',sans-serif;}
+  .wrap{max-width:920px;margin:0 auto;padding:36px 20px 70px;}
+  .header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:26px;}
+  .header-left{display:flex;align-items:center;gap:12px;}
+  h1{font-size:34px;font-weight:800;margin:0;letter-spacing:-.3px;color:var(--ink);}
+  #syncStatus{font-size:13px;color:var(--faint);font-weight:600;}
+  .tabs{display:flex;gap:8px;margin-bottom:-1px;flex-wrap:wrap;}
+  .tab{
+    padding:13px 22px;border-radius:14px 14px 0 0;border:1px solid var(--border);
+    background:#DCE6FA;color:var(--faint);font-weight:700;font-size:14.5px;
+    position:relative;top:1px;cursor:pointer;transition:background .15s;
+  }
+  .tab.active{background:var(--card);border-bottom:1px solid var(--card);}
+  .tab.active[data-t="personal"]{color:var(--personal);border-color:var(--personal);}
+  .tab.active[data-t="company"]{color:var(--company);border-color:var(--company);}
+  .tab.active[data-t="summary"]{color:var(--summary);border-color:var(--summary);}
+  .tab.active[data-t="creditcards"]{color:var(--cc);border-color:var(--cc);}
+  .panel{
+    background:var(--card);border:1px solid var(--border);border-radius:0 18px 18px 18px;
+    padding:30px;box-shadow:0 8px 28px rgba(20,50,120,.08);
+  }
+  .panel.personal{border-top:4px solid var(--personal);}
+  .panel.company{border-top:4px solid var(--company);}
+  .panel.summary{border-top:4px solid var(--summary);}
+  .panel.creditcards{border-top:4px solid var(--cc);}
+  .cc-card{background:var(--card-soft);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:18px;}
+  .cc-card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;flex-wrap:wrap;}
+  .cc-card-title{font-family:'Sora',sans-serif;font-weight:700;font-size:17px;color:var(--ink);}
+  .cc-card-sub{font-size:12.5px;color:var(--faint);margin-top:2px;}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:28px;}
+  .stats-flex{display:flex;flex-wrap:wrap;gap:14px;}
+  .total-accounts-card{
+    background:linear-gradient(135deg, var(--summary), var(--personal));
+    border-radius:16px;padding:22px 26px;color:#fff;
+    box-shadow:0 6px 20px rgba(14,165,233,.25);
+  }
+  .total-accounts-card .lbl{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;opacity:.9;margin-bottom:6px;}
+  .total-accounts-card .val{font-size:32px;font-weight:800;font-family:'IBM Plex Mono',monospace;}
+  .stats-flex .stat{flex:1 1 150px;}
+  .stat{padding:18px;background:var(--card-soft);border:1px solid var(--border);border-radius:14px;}
+  .stat .lbl{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+  .stat .val{font-size:24px;font-weight:700;}
+  .goal-row{display:flex;align-items:center;gap:10px;margin-top:8px;}
+  .goal-track{flex:1;height:12px;background:var(--border);border-radius:8px;overflow:hidden;}
+  .goal-fill{height:100%;transition:width .3s;}
+  .goal-num{font-size:13px;color:var(--muted);min-width:120px;text-align:right;font-weight:600;}
+  .goal-set{display:flex;gap:8px;margin-top:10px;}
+  input,select,button{font-family:'Inter',sans-serif;font-size:14.5px;}
+  input,select{padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;background:var(--card-soft);color:var(--ink);}
+  input:focus,select:focus{outline:2px solid var(--personal);outline-offset:1px;}
+  .btn{border:none;border-radius:10px;font-weight:700;cursor:pointer;padding:10px 20px;color:#fff;background:var(--personal);}
+  .btn-outline{background:transparent;border:1.5px solid;}
+  .btn:disabled{opacity:.5;cursor:default;}
+  .form-box{margin:24px 0;padding:18px;background:var(--card-soft);border:1px solid var(--border);border-radius:14px;}
+  .form-box.editing{border:1.5px solid var(--personal);}
+  .form-title{font-size:14px;font-weight:700;margin-bottom:12px;color:var(--muted);display:flex;align-items:center;justify-content:space-between;}
+  .form-row{display:flex;flex-wrap:wrap;gap:10px;}
+  .form-row input:nth-child(1){flex:2 1 160px;}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:26px;}
+  @media(max-width:640px){.cols{grid-template-columns:1fr;} .stats{grid-template-columns:1fr;} .header{flex-direction:column;align-items:flex-start;gap:6px;} h1{font-size:28px;} .panel{padding:20px;}}
+  .sec-title{font-size:14px;font-weight:700;margin-bottom:12px;color:var(--muted);}
+  .tx-list{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
+  .tx{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--card-soft);border:1px solid var(--border);border-radius:12px;gap:8px;}
+  .tx .desc{font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;}
+  .tx .meta{font-size:12.5px;color:var(--faint);margin-top:2px;}
+  .tx .amt{font-family:'IBM Plex Mono',monospace;font-size:14.5px;font-weight:700;}
+  .tx-actions{display:flex;align-items:center;gap:2px;}
+  .icon-btn{background:none;border:none;color:#B7C3E4;cursor:pointer;padding:3px;font-size:15px;line-height:1;border-radius:6px;}
+  .icon-btn:hover{color:var(--personal);background:#E4ECFC;}
+  .icon-btn:disabled{opacity:.25;cursor:default;}
+  .icon-btn:disabled:hover{color:#B7C3E4;background:none;}
+  .order-arrows{display:flex;flex-direction:column;gap:0;}
+  .order-arrows .icon-btn{font-size:11px;padding:1px 3px;}
+  .empty{font-size:14px;color:var(--faint);font-style:italic;}
+  .cat-bars{display:flex;flex-direction:column;gap:10px;}
+  .cat-bar-row .cat-lbl{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:4px;font-weight:600;}
+  .cat-bar-track{height:9px;background:var(--border);border-radius:6px;overflow:hidden;}
+  .cat-bar-fill{height:100%;border-radius:6px;}
+  footer{font-size:12.5px;color:var(--faint);margin-top:18px;text-align:center;}
+  .config-warning{background:#FFF4E5;border:1px solid #F0C481;color:#8A5A0F;padding:16px 18px;border-radius:12px;font-size:14px;margin-bottom:24px;line-height:1.6;}
+  .config-warning code{background:#FBE4B8;padding:2px 6px;border-radius:5px;}
+  .month-table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  .month-table th{text-align:right;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);padding:8px;border-bottom:2px solid var(--border);}
+  .month-table th:first-child{text-align:left;}
+  .month-table td{padding:10px 8px;text-align:right;border-bottom:1px solid var(--border);}
+  .month-table td:first-child{text-align:left;font-weight:700;}
+  .month-table tr:last-child td{border-bottom:none;}
+  .cancel-link{background:none;border:none;color:var(--faint);font-size:12.5px;font-weight:600;cursor:pointer;text-decoration:underline;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="header-left">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#2F6FED" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <h1 class="display">The Ledger</h1>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px">
+      <button class="cancel-link" id="toggleVisibilityBtn" style="text-decoration:none;font-size:13px">🙈 Hide figures</button>
+      <span id="syncStatus">Connecting…</span>
+    </div>
+  </div>
+
+  <div id="configWarning" class="config-warning" style="display:none">
+    This site isn't connected to a database yet. Open <code>index.html</code>, find <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> near the top of the script, and paste in your values from Supabase → Project Settings → API.
+  </div>
+
+  <div class="tabs" id="tabs">
+    <div class="tab active" data-t="personal">Personal</div>
+    <div class="tab" data-t="company">Company / Project</div>
+    <div class="tab" data-t="creditcards">Credit Cards</div>
+    <div class="tab" data-t="summary">Summary</div>
+  </div>
+
+  <div class="panel personal" id="panel">
+    <div class="stats-flex" id="topStats" style="margin-bottom:28px"></div>
+
+    <div class="sec-title">Accounts</div>
+    <div id="totalAccountsCard" class="total-accounts-card" style="margin-bottom:12px"></div>
+    <div class="stats-flex" id="sourceStats" style="margin-bottom:8px"></div>
+    <div style="margin-bottom:22px">
+      <button class="cancel-link" id="toggleStartingBal" style="text-decoration:none">Manage accounts ▾</button>
+      <div id="startingBalBox" style="display:none;margin-top:10px;padding:14px;background:var(--card-soft);border:1px solid var(--border);border-radius:12px">
+        <div id="sourceInputsList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
+        <div class="form-row" style="margin-bottom:10px">
+          <button class="btn" id="sbSaveBtn">Save balances</button>
+        </div>
+        <div class="form-row">
+          <input id="newSourceName" placeholder="New account name (e.g. Bank 3, GCash)" style="flex:2 1 200px"/>
+          <button class="btn btn-outline" id="addSourceBtn" style="color:var(--personal);border-color:var(--personal)">+ Add account</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-title" id="goalLbl">Personal savings goal</div>
+      <div class="goal-row">
+        <div class="goal-track"><div class="goal-fill" id="goalFill" style="width:0%"></div></div>
+        <div class="goal-num mono" id="goalNum">0.00 / 0.00</div>
+      </div>
+      <div class="goal-set">
+        <input type="number" id="goalInput" placeholder="Set target amount" style="flex:1"/>
+        <button class="btn btn-outline" id="goalBtn">Set goal</button>
+      </div>
+    </div>
+
+    <div id="installmentSummary" style="display:none;margin-top:18px;padding:14px 16px;background:var(--card-soft);border:1px solid var(--border);border-radius:12px">
+      <div class="sec-title" style="margin-bottom:6px">Installments outstanding</div>
+      <div class="val mono" id="installmentTotal" style="font-size:20px;font-weight:700;color:var(--red)">0.00</div>
+    </div>
+
+    <div class="form-box" id="formBox">
+      <div class="form-title"><span id="formTitle">Add entry</span> <button class="cancel-link" id="cancelEditBtn" style="display:none">Cancel edit</button></div>
+      <div class="form-row">
+        <input id="fDesc" placeholder="Description"/>
+        <input id="fDate" type="date"/>
+        <select id="fCat">
+          <option value="Credit Card">Credit Card</option>
+          <option value="Bills">Bills</option>
+          <option value="Internet">Internet</option>
+          <option value="Car">Car</option>
+          <option value="Other">Other</option>
+        </select>
+        <input id="fCatOther" placeholder="Enter category" style="display:none"/>
+        <select id="fCcCard" style="display:none"></select>
+        <div id="fCcCardInfo" style="display:none;flex-basis:100%;font-size:12.5px;color:var(--muted);background:#EFEAFC;border:1px solid var(--border);border-radius:8px;padding:8px 12px"></div>
+        <select id="fRecurrence">
+          <option value="one-time">One-time</option>
+          <option value="recurring">Recurring</option>
+          <option value="installment">Installment</option>
+        </select>
+        <select id="fBudget" style="display:none">
+          <option value="budgeted">Budgeted</option>
+          <option value="not_budgeted">Not budgeted</option>
+        </select>
+        <input id="fTotalAmt" type="number" placeholder="Total cost" style="display:none"/>
+        <input id="fPaidAmt" type="number" placeholder="Paid so far" style="display:none"/>
+        <div id="installmentAutoInfo" style="display:none;flex-basis:100%;font-size:12.5px;color:var(--muted);background:#EAF1FE;border:1px solid var(--border);border-radius:8px;padding:8px 12px"></div>
+        <select id="fSource"></select>
+        <input id="fAmt" type="number" placeholder="Amount"/>
+        <select id="fType"><option value="expense">Expense</option><option value="income">Income</option></select>
+        <label id="receiptLabel" style="flex:1 1 220px;display:flex;align-items:center;gap:8px;cursor:pointer;padding:9px 12px;border:1.5px dashed var(--border);border-radius:10px;font-size:13.5px;color:var(--muted)">
+          📎 <span id="receiptLabelText">Attach receipt (photo or PDF)</span>
+          <input id="fReceipt" type="file" accept="image/*,application/pdf" style="display:none"/>
+        </label>
+        <button class="btn" id="addBtn">+ Add</button>
+      </div>
+
+      <div id="lineItemsSection" style="display:none;margin-top:14px">
+        <div class="form-title" style="margin-bottom:8px">Line items <button class="cancel-link" id="addLineItemBtn" style="text-decoration:none">+ Add item</button></div>
+        <div id="lineItemsList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px"></div>
+        <div id="lineItemsSum" style="font-size:12.5px;color:var(--muted)"></div>
+      </div>
+    </div>
+
+    <div class="cols">
+      <div>
+        <div class="sec-title">Entries</div>
+        <div class="tx-list" id="txList"></div>
+      </div>
+      <div>
+        <div class="sec-title">Spending by category</div>
+        <div class="cat-bars" id="catBars"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel summary" id="summaryPanel" style="display:none">
+    <div class="sec-title" style="font-size:16px;margin-bottom:12px">Accounts</div>
+    <div id="summaryTotalAccountsCard" class="total-accounts-card" style="margin-bottom:12px"></div>
+    <div class="stats-flex" id="summarySourceStats" style="margin-bottom:32px"></div>
+
+    <div class="sec-title" style="font-size:16px;margin-bottom:16px">Monthly overview</div>
+    <div class="cols">
+      <div>
+        <div class="sec-title" style="color:var(--personal)">Personal</div>
+        <table class="month-table"><thead><tr><th>Month</th><th>Income</th><th>Expenses</th><th>Saved</th></tr></thead><tbody id="summaryPersonalBody"></tbody></table>
+      </div>
+      <div>
+        <div class="sec-title" style="color:var(--company)">Company / Project</div>
+        <table class="month-table"><thead><tr><th>Month</th><th>Budgeted</th><th>Expenses</th><th>Saved</th></tr></thead><tbody id="summaryCompanyBody"></tbody></table>
+      </div>
+    </div>
+
+    <div style="margin-top:32px">
+      <div class="sec-title" style="font-size:16px;margin-bottom:4px">Company / Project — Budgeted vs. Not Budgeted</div>
+      <table class="month-table"><thead><tr><th>Month</th><th>Budgeted</th><th>Not budgeted</th></tr></thead><tbody id="summaryBudgetBody"></tbody></table>
+    </div>
+
+    <div style="margin-top:32px">
+      <div class="sec-title" style="font-size:16px;margin-bottom:4px">Installments outstanding — as of today</div>
+      <div class="val mono" id="summaryInstallmentTotal" style="font-size:28px;font-weight:800;color:var(--red);margin:8px 0 16px">0.00</div>
+      <div class="stats-flex" id="summaryInstallmentByAccount" style="margin-bottom:16px"></div>
+      <div class="sec-title" style="font-size:13px">Breakdown by item</div>
+      <div class="tx-list" id="summaryInstallmentList" style="max-height:none"></div>
+    </div>
+
+    <div style="margin-top:32px">
+      <div class="sec-title" style="font-size:16px;margin-bottom:4px">Credit Cards — Upcoming Bills (next statement)</div>
+      <div class="val mono" id="summaryCcUpcomingTotal" style="font-size:28px;font-weight:800;color:var(--cc);margin:8px 0 16px">0.00</div>
+      <div class="stats-flex" id="summaryCcByCard"></div>
+    </div>
+  </div>
+
+  <div class="panel creditcards" id="creditCardsPanel" style="display:none">
+    <div class="stats-flex" id="ccTopStats" style="margin-bottom:26px"></div>
+
+    <div id="ccCardsContainer"></div>
+
+    <div class="form-box">
+      <div class="form-title">Add a credit card</div>
+      <div class="form-row">
+        <input id="ccName" placeholder="Card name (e.g. BPI Gold)"/>
+        <input id="ccNumber" placeholder="Last 4 digits"/>
+        <input id="ccLimit" type="number" placeholder="Credit limit"/>
+        <input id="ccDueDay" type="number" min="1" max="31" placeholder="Due day (1-31)"/>
+        <button class="btn" id="ccAddCardBtn" style="background:var(--cc)">+ Add card</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>Synced with your Supabase database — the same numbers show up on every device you open this site from. Use the date field to log entries for past months. Only this month's entries can be reordered.</footer>
+</div>
+
+<script>
+// ── Paste your Supabase project values here ──────────────────────────
+const SUPABASE_URL = "https://phhoreumwcqzfkwgcewl.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_Ot7VQ82w5aG8k6fZuvmL1A_NlljuI-N";
+// ───────────────────────────────────────────────────────────────────
+
+const isConfigured = !SUPABASE_URL.includes("YOUR_") && !SUPABASE_ANON_KEY.includes("YOUR_");
+let supabaseClient = null;
+if (isConfigured) {
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} else {
+  document.getElementById('configWarning').style.display = 'block';
+  document.getElementById('syncStatus').textContent = 'Not connected';
+}
+
+const CATEGORY_COLORS = {
+  'Credit Card': '#D64545',
+  'Bills': '#E08A2E',
+  'Internet': '#16296E',
+  'Car': '#2F6FED',
+  'Other': '#8E9DC5'
+};
+const RECURRENCE_LABEL = { 'one-time': 'One-time', 'recurring': 'Recurring', 'installment': 'Installment' };
+const RECURRENCE_COLOR = { 'one-time': '#8E9DC5', 'recurring': '#1E8E5A', 'installment': '#2F6FED' };
+const LABELS = { personal: { name:'Personal', goalLabel:'Personal savings goal', incomeLabel:'Income' }, company: { name:'Company / Project', goalLabel:'Project reserve goal', incomeLabel:'Budgeted' } };
+
+let data = {
+  personal: { savingsTarget:0, transactions:[] },
+  company: { savingsTarget:0, transactions:[] }
+};
+let sharedStartingBalances = {};
+let creditCards = [];
+let ccCharges = [];
+let tab = 'personal';
+let editingId = null;
+
+function fmt(n){ n = Number(n)||0; return n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+let figuresHidden = localStorage.getItem('ledger-hide-figures') === '1';
+function dfmt(n){ return figuresHidden ? '••••••' : fmt(n); }
+function updateVisibilityBtn(){
+  document.getElementById('toggleVisibilityBtn').textContent = figuresHidden ? '👁️ Show figures' : '🙈 Hide figures';
+}
+document.getElementById('toggleVisibilityBtn').addEventListener('click', ()=>{
+  figuresHidden = !figuresHidden;
+  localStorage.setItem('ledger-hide-figures', figuresHidden ? '1' : '0');
+  updateVisibilityBtn();
+  render();
+});
+updateVisibilityBtn();
+function setStatus(text){ document.getElementById('syncStatus').textContent = text; }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function ownerOf(id){ return data.personal.transactions.some(t=>t.id===id) ? 'personal' : 'company'; }
+function sortKey(t){ return t.sort_order != null ? Number(t.sort_order) : new Date(t.created_at || 0).getTime(); }
+
+async function loadAll(){
+  if(!supabaseClient) { document.getElementById('fDate').value = todayStr(); render(); return; }
+  setStatus('Syncing…');
+  try{
+    const [{ data: txRows, error: txErr }, { data: goalRows, error: goalErr }, { data: sbRows, error: sbErr }, { data: cardRows, error: cardErr }, { data: chargeRows, error: chargeErr }] = await Promise.all([
+      supabaseClient.from('transactions').select('*').order('date', { ascending:false }).order('created_at', { ascending:false }),
+      supabaseClient.from('goals').select('*'),
+      supabaseClient.from('source_balances').select('*'),
+      supabaseClient.from('credit_cards').select('*').order('created_at', { ascending:true }),
+      supabaseClient.from('cc_charges').select('*').order('date', { ascending:false }).order('created_at', { ascending:false })
+    ]);
+    if(txErr || goalErr || sbErr || cardErr || chargeErr) throw (txErr || goalErr || sbErr || cardErr || chargeErr);
+
+    data.personal.transactions = txRows.filter(r=>r.account==='personal');
+    data.company.transactions = txRows.filter(r=>r.account==='company');
+    (goalRows||[]).forEach(g=>{ if(data[g.account]) data[g.account].savingsTarget = g.target; });
+    (sbRows||[]).forEach(s=>{ sharedStartingBalances[s.source] = Number(s.starting_balance); });
+    creditCards = cardRows || [];
+    ccCharges = chargeRows || [];
+
+    setStatus('Synced');
+  }catch(e){
+    console.error(e);
+    setStatus('Sync error — check your Supabase setup');
+  }
+  document.getElementById('fDate').value = todayStr();
+  render();
+}
+
+const panel = document.getElementById('panel');
+const summaryPanel = document.getElementById('summaryPanel');
+const creditCardsPanel = document.getElementById('creditCardsPanel');
+const tabsEl = document.getElementById('tabs');
+
+function setTab(t){
+  tab = t;
+  cancelEdit();
+  document.querySelectorAll('.tab').forEach(el=>{
+    el.classList.toggle('active', el.dataset.t === t);
+  });
+  panel.style.display = 'none';
+  summaryPanel.style.display = 'none';
+  creditCardsPanel.style.display = 'none';
+  if(t === 'summary'){
+    summaryPanel.style.display = '';
+  } else if(t === 'creditcards'){
+    creditCardsPanel.style.display = '';
+  } else {
+    panel.style.display = '';
+    panel.className = 'panel ' + t;
+    document.querySelector('#fType option[value="income"]').textContent = LABELS[t].incomeLabel;
+  }
+  render();
+}
+tabsEl.addEventListener('click', e=>{
+  const el = e.target.closest('.tab');
+  if(el) setTab(el.dataset.t);
+});
+
+function findPriorInstallment(desc){
+  const norm = desc.trim().toLowerCase();
+  if(!norm) return null;
+  const candidates = data[tab].transactions
+    .filter(t => t.recurrence==='installment' && t.total_amount!=null && t.id!==editingId
+      && t.description.trim().toLowerCase()===norm)
+    .sort((a,b)=> (b.date||'').localeCompare(a.date||'') || new Date(b.created_at||0)-new Date(a.created_at||0));
+  return candidates[0] || null;
+}
+
+function updateFormVisibility(){
+  const isExpense = document.getElementById('fType').value === 'expense';
+  const isInstallment = isExpense && document.getElementById('fRecurrence').value === 'installment';
+  const isOtherCat = isExpense && document.getElementById('fCat').value === 'Other';
+  const isCompanyExpense = isExpense && tab === 'company';
+  const isCcCategory = isExpense && document.getElementById('fCat').value === 'Credit Card';
+  document.getElementById('fCat').style.display = isExpense ? '' : 'none';
+  document.getElementById('fCatOther').style.display = isOtherCat ? '' : 'none';
+  document.getElementById('fRecurrence').style.display = isExpense ? '' : 'none';
+  document.getElementById('fBudget').style.display = isCompanyExpense ? '' : 'none';
+  document.getElementById('lineItemsSection').style.display = isExpense ? '' : 'none';
+
+  const ccSel = document.getElementById('fCcCard');
+  const ccInfo = document.getElementById('fCcCardInfo');
+  ccSel.style.display = isCcCategory ? '' : 'none';
+  if(isCcCategory){
+    if(creditCards.length === 0){
+      ccSel.innerHTML = '<option value="">No cards added yet</option>';
+      ccInfo.style.display = '';
+      ccInfo.textContent = 'Add a card in the Credit Cards tab to link this expense to it.';
+    } else {
+      const prevVal = ccSel.value;
+      ccSel.innerHTML = creditCards.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+      if(creditCards.some(c=>c.id===prevVal)) ccSel.value = prevVal;
+      const chosen = creditCards.find(c=>c.id===ccSel.value) || creditCards[0];
+      ccSel.value = chosen.id;
+      const balance = cardBalanceToPay(chosen.id);
+      const upcoming = cardUpcomingBill(chosen.id);
+      ccInfo.style.display = '';
+      ccInfo.textContent = `${chosen.name} — Total due (incl. installments): ${fmt(balance)} · Upcoming this month: ${fmt(upcoming)}`;
+    }
+  } else {
+    ccInfo.style.display = 'none';
+  }
+
+  const infoBox = document.getElementById('installmentAutoInfo');
+  let prior = null;
+  if(isInstallment && !editingId){
+    prior = findPriorInstallment(document.getElementById('fDesc').value);
+  }
+
+  if(isInstallment && prior){
+    document.getElementById('fTotalAmt').style.display = 'none';
+    document.getElementById('fPaidAmt').style.display = 'none';
+    const paidBefore = Number(prior.paid_amount || 0);
+    const currentAmt = parseFloat(document.getElementById('fAmt').value) || 0;
+    const paidAfter = paidBefore + currentAmt;
+    const total = Number(prior.total_amount);
+    const remaining = Math.max(total - paidAfter, 0);
+    infoBox.style.display = '';
+    infoBox.textContent = `Found a previous "${prior.description}" installment — total ${fmt(total)}, paid to date ${fmt(paidBefore)}. After this payment: ${fmt(paidAfter)} paid, ${fmt(remaining)} left. Total cost and paid-so-far will be filled in automatically.`;
+  } else {
+    document.getElementById('fTotalAmt').style.display = isInstallment ? '' : 'none';
+    document.getElementById('fPaidAmt').style.display = isInstallment ? '' : 'none';
+    infoBox.style.display = 'none';
+    infoBox.textContent = '';
+  }
+}
+document.getElementById('fType').addEventListener('change', updateFormVisibility);
+document.getElementById('fRecurrence').addEventListener('change', updateFormVisibility);
+document.getElementById('fCat').addEventListener('change', updateFormVisibility);
+document.getElementById('fCcCard').addEventListener('change', updateFormVisibility);
+document.getElementById('fDesc').addEventListener('input', updateFormVisibility);
+document.getElementById('fAmt').addEventListener('input', updateFormVisibility);
+
+// ── Line items ──────────────────────────────────────────────
+let lineItems = [];
+
+function renderLineItems(){
+  const list = document.getElementById('lineItemsList');
+  list.innerHTML = '';
+  lineItems.forEach((item, idx)=>{
+    const row = document.createElement('div');
+    row.className = 'form-row';
+    row.innerHTML = `
+      <input class="li-desc" placeholder="Item description" value="${escapeHtml(item.description)}" style="flex:2 1 160px"/>
+      <input class="li-amt" type="number" placeholder="Amount" value="${item.amount}" style="flex:1 1 100px"/>
+      <button class="icon-btn" title="Remove item">✕</button>`;
+    row.querySelector('.li-desc').addEventListener('input', e=>{ lineItems[idx].description = e.target.value; });
+    row.querySelector('.li-amt').addEventListener('input', e=>{ lineItems[idx].amount = parseFloat(e.target.value) || 0; updateLineItemsSum(); });
+    row.querySelector('.icon-btn').addEventListener('click', ()=>{ lineItems.splice(idx,1); renderLineItems(); });
+    list.appendChild(row);
+  });
+  updateLineItemsSum();
+}
+
+function updateLineItemsSum(){
+  const sumEl = document.getElementById('lineItemsSum');
+  const amtField = document.getElementById('fAmt');
+  if(lineItems.length === 0){
+    sumEl.textContent = '';
+    amtField.readOnly = false;
+    return;
+  }
+  const sum = lineItems.reduce((s,i)=>s+(Number(i.amount)||0),0);
+  sumEl.textContent = `Line items total: ${fmt(sum)} — this will be used as the entry's Amount.`;
+  amtField.value = sum;
+  amtField.readOnly = true;
+}
+
+document.getElementById('addLineItemBtn').addEventListener('click', ()=>{
+  lineItems.push({ description:'', amount:0 });
+  renderLineItems();
+});
+
+document.getElementById('fReceipt').addEventListener('change', ()=>{
+  const f = document.getElementById('fReceipt').files[0];
+  document.getElementById('receiptLabelText').textContent = f ? f.name : 'Attach receipt (photo or PDF)';
+});
+
+function resetForm(){
+  document.getElementById('fDesc').value='';
+  document.getElementById('fAmt').value='';
+  document.getElementById('fAmt').readOnly = false;
+  document.getElementById('fTotalAmt').value='';
+  document.getElementById('fPaidAmt').value='';
+  document.getElementById('fCatOther').value='';
+  document.getElementById('fDate').value = todayStr();
+  document.getElementById('fCat').value = 'Credit Card';
+  document.getElementById('fRecurrence').value = 'one-time';
+  document.getElementById('fType').value = 'expense';
+  document.getElementById('fBudget').value = 'budgeted';
+  document.getElementById('fSource').value = 'Bank 1';
+  document.getElementById('fReceipt').value = '';
+  document.getElementById('receiptLabelText').textContent = 'Attach receipt (photo or PDF)';
+  lineItems = [];
+  renderLineItems();
+  updateFormVisibility();
+}
+
+function cancelEdit(){
+  editingId = null;
+  document.getElementById('formTitle').textContent = 'Add entry';
+  document.getElementById('addBtn').textContent = '+ Add';
+  document.getElementById('cancelEditBtn').style.display = 'none';
+  document.getElementById('formBox').classList.remove('editing');
+  resetForm();
+}
+document.getElementById('cancelEditBtn').addEventListener('click', cancelEdit);
+
+function startEdit(t){
+  editingId = t.id;
+  document.getElementById('fDesc').value = t.description;
+  document.getElementById('fDate').value = t.date;
+  document.getElementById('fType').value = t.type;
+  if(t.type === 'expense'){
+    const knownCats = ['Credit Card','Bills','Internet','Car'];
+    if(knownCats.includes(t.category)){
+      document.getElementById('fCat').value = t.category;
+      document.getElementById('fCatOther').value = '';
+    } else {
+      document.getElementById('fCat').value = 'Other';
+      document.getElementById('fCatOther').value = t.category;
+    }
+    document.getElementById('fRecurrence').value = t.recurrence || 'one-time';
+    if(tab === 'company') document.getElementById('fBudget').value = t.budget_status || 'budgeted';
+  }
+  document.getElementById('fTotalAmt').value = t.total_amount != null ? t.total_amount : '';
+  document.getElementById('fPaidAmt').value = t.paid_amount != null ? t.paid_amount : '';
+  document.getElementById('fAmt').value = t.amount;
+  lineItems = Array.isArray(t.line_items) ? t.line_items.map(i=>({description:i.description, amount:Number(i.amount)||0})) : [];
+  renderLineItems();
+  document.getElementById('fReceipt').value = '';
+  document.getElementById('receiptLabelText').textContent = t.receipt_url ? 'Receipt attached — choose a file to replace' : 'Attach receipt (photo or PDF)';
+  updateFormVisibility();
+  if(t.source) document.getElementById('fSource').value = t.source;
+  if(t.card_id){ document.getElementById('fCcCard').value = t.card_id; updateFormVisibility(); }
+
+  document.getElementById('formTitle').textContent = 'Edit entry';
+  document.getElementById('addBtn').textContent = 'Update entry';
+  document.getElementById('cancelEditBtn').style.display = '';
+  document.getElementById('formBox').classList.add('editing');
+  document.getElementById('formBox').scrollIntoView({ behavior:'smooth', block:'center' });
+  document.getElementById('fDesc').focus();
+}
+
+document.getElementById('addBtn').addEventListener('click', async ()=>{
+  const desc = document.getElementById('fDesc').value.trim();
+  const type = document.getElementById('fType').value;
+  const catSelect = document.getElementById('fCat').value;
+  const catOther = document.getElementById('fCatOther').value.trim();
+  const cat = type === 'income' ? LABELS[tab].incomeLabel : (catSelect === 'Other' ? (catOther || 'Other') : catSelect);
+  const recurrence = type === 'income' ? 'one-time' : document.getElementById('fRecurrence').value;
+  const amt = parseFloat(document.getElementById('fAmt').value);
+  const date = document.getElementById('fDate').value || todayStr();
+  const source = document.getElementById('fSource').value;
+  if(!desc || !amt || amt<=0) return;
+  const budgetStatus = (type === 'expense' && tab === 'company') ? document.getElementById('fBudget').value : null;
+  const cardId = (type === 'expense' && cat === 'Credit Card' && document.getElementById('fCcCard').value) ? document.getElementById('fCcCard').value : null;
+  const row = { account: tab, date, description: desc, category: cat, type, amount: amt, recurrence, source, budget_status: budgetStatus, card_id: cardId };
+  if(recurrence === 'installment'){
+    const prior = !editingId ? findPriorInstallment(desc) : null;
+    if(prior){
+      row.total_amount = Number(prior.total_amount);
+      row.paid_amount = Number(prior.paid_amount || 0) + amt;
+    } else {
+      const totalAmt = parseFloat(document.getElementById('fTotalAmt').value);
+      const paidAmt = parseFloat(document.getElementById('fPaidAmt').value);
+      row.total_amount = isNaN(totalAmt) ? null : totalAmt;
+      row.paid_amount = isNaN(paidAmt) ? null : paidAmt;
+    }
+  } else {
+    row.total_amount = null;
+    row.paid_amount = null;
+  }
+
+  row.line_items = (type === 'expense' && lineItems.length > 0)
+    ? lineItems.filter(i=>i.description.trim()).map(i=>({ description: i.description.trim(), amount: Number(i.amount)||0 }))
+    : null;
+  if(row.line_items && row.line_items.length === 0) row.line_items = null;
+
+  row.receipt_url = editingId ? undefined : null; // undefined = leave column untouched on update unless a new file is chosen
+  const receiptFile = document.getElementById('fReceipt').files[0];
+  if(receiptFile){
+    if(supabaseClient){
+      setStatus('Uploading receipt…');
+      const path = `${tab}/${Date.now()}_${receiptFile.name}`;
+      const { error: upErr } = await supabaseClient.storage.from('receipts').upload(path, receiptFile);
+      if(upErr){ console.error(upErr); setStatus('Receipt upload failed'); return; }
+      const { data: pub } = supabaseClient.storage.from('receipts').getPublicUrl(path);
+      row.receipt_url = pub.publicUrl;
+    } else {
+      row.receipt_url = URL.createObjectURL(receiptFile);
+    }
+  }
+  if(row.receipt_url === undefined) delete row.receipt_url;
+
+  if(editingId){
+    const id = editingId;
+    if(!supabaseClient){
+      const acc = data[tab];
+      const idx = acc.transactions.findIndex(t=>t.id===id);
+      if(idx>-1) acc.transactions[idx] = { ...acc.transactions[idx], ...row };
+      cancelEdit(); render(); return;
+    }
+    setStatus('Saving…');
+    const { data: updated, error } = await supabaseClient.from('transactions').update(row).eq('id', id).select().single();
+    if(error){ console.error(error); setStatus('Save failed'); return; }
+    const acc = data[tab];
+    const idx = acc.transactions.findIndex(t=>t.id===id);
+    if(idx>-1) acc.transactions[idx] = updated;
+    setStatus('Synced');
+    cancelEdit();
+    render();
+    return;
+  }
+
+  if(!supabaseClient){
+    data[tab].transactions.unshift({...row, id: Date.now().toString(), created_at: new Date().toISOString()});
+    resetForm(); render(); return;
+  }
+
+  setStatus('Saving…');
+  const { data: inserted, error } = await supabaseClient.from('transactions').insert(row).select().single();
+  if(error){ console.error(error); setStatus('Save failed'); return; }
+  data[tab].transactions.unshift(inserted);
+  setStatus('Synced');
+  resetForm();
+  render();
+});
+
+document.getElementById('goalBtn').addEventListener('click', async ()=>{
+  const v = parseFloat(document.getElementById('goalInput').value);
+  if(isNaN(v) || v<0) return;
+  document.getElementById('goalInput').value='';
+
+  if(!supabaseClient){ data[tab].savingsTarget = v; render(); return; }
+
+  setStatus('Saving…');
+  const { error } = await supabaseClient.from('goals').upsert({ account: tab, target: v });
+  if(error){ console.error(error); setStatus('Save failed'); return; }
+  data[tab].savingsTarget = v;
+  setStatus('Synced');
+  render();
+});
+
+function allTransactions(){
+  return [...data.personal.transactions, ...data.company.transactions];
+}
+
+function sourceNames(){
+  const names = new Set(Object.keys(sharedStartingBalances));
+  allTransactions().forEach(t=>{ if(t.source) names.add(t.source); });
+  return Array.from(names);
+}
+
+function sourceBalance(name){
+  const start = Number(sharedStartingBalances[name] || 0);
+  const all = allTransactions();
+  const income = all.filter(t=>t.source===name && t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
+  const expense = all.filter(t=>t.source===name && t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+  return start + income - expense;
+}
+
+function accountsBreakdown(){
+  const names = new Set(sourceNames());
+  const startingTotal = Array.from(names).reduce((s,n)=>s+Number(sharedStartingBalances[n]||0),0);
+  let personalNet = 0, companyNet = 0;
+  data.personal.transactions.forEach(t=>{
+    if(t.source && names.has(t.source)) personalNet += (t.type==='income' ? Number(t.amount) : -Number(t.amount));
+  });
+  data.company.transactions.forEach(t=>{
+    if(t.source && names.has(t.source)) companyNet += (t.type==='income' ? Number(t.amount) : -Number(t.amount));
+  });
+  return { startingTotal, personalNet, companyNet };
+}
+
+function renderSourceStats(containerId, totalContainerId){
+  const names = sourceNames();
+  const box = document.getElementById(containerId);
+  const totalBox = document.getElementById(totalContainerId);
+  box.innerHTML = '';
+  if(names.length === 0){
+    totalBox.innerHTML = '';
+    box.innerHTML = '<div class="empty">No accounts yet — add one under "Manage accounts" below.</div>';
+  } else {
+    const total = names.reduce((s,name)=>s+sourceBalance(name),0);
+    totalBox.innerHTML = `<div class="lbl">Total Across Accounts</div><div class="val">${dfmt(total)}</div>`;
+    names.forEach(name=>{
+      const div = document.createElement('div');
+      div.className = 'stat';
+      div.innerHTML = `<div class="lbl" style="color:var(--muted)">${escapeHtml(name)}</div><div class="val mono">${dfmt(sourceBalance(name))}</div>`;
+      box.appendChild(div);
+    });
+  }
+}
+
+function renderSourceDropdown(){
+  const names = sourceNames();
+  const sel = document.getElementById('fSource');
+  const prevVal = sel.value;
+  sel.innerHTML = names.map(name=>`<option value="${escapeHtml(name)}">${escapeHtml(name)} — ${fmt(sourceBalance(name))}</option>`).join('');
+  if(names.includes(prevVal)) sel.value = prevVal;
+}
+
+function renderSourceInputsList(){
+  const names = sourceNames();
+  const list = document.getElementById('sourceInputsList');
+  list.innerHTML = '';
+  names.forEach(name=>{
+    const row = document.createElement('div');
+    row.className = 'form-row';
+    row.innerHTML = `
+      <input value="${escapeHtml(name)}" disabled style="flex:1 1 140px;opacity:.75"/>
+      <input type="number" class="sb-input" data-name="${escapeHtml(name)}" value="${sharedStartingBalances[name] || 0}" placeholder="Starting balance" style="flex:1 1 140px"/>
+      <button class="icon-btn" data-remove-source="${escapeHtml(name)}" title="Remove account">✕</button>`;
+    list.appendChild(row);
+  });
+  list.querySelectorAll('[data-remove-source]').forEach(btn=>{
+    btn.addEventListener('click', ()=>removeSource(btn.dataset.removeSource));
+  });
+}
+
+document.getElementById('toggleStartingBal').addEventListener('click', ()=>{
+  const box = document.getElementById('startingBalBox');
+  const open = box.style.display !== 'none';
+  box.style.display = open ? 'none' : '';
+  if(!open) renderSourceInputsList();
+});
+
+document.getElementById('addSourceBtn').addEventListener('click', async ()=>{
+  const nameInput = document.getElementById('newSourceName');
+  const name = nameInput.value.trim();
+  if(!name) return;
+  if(sharedStartingBalances[name] != null){ nameInput.value=''; return; }
+
+  if(supabaseClient){
+    setStatus('Saving…');
+    const { error } = await supabaseClient.from('source_balances').upsert({ account: 'shared', source: name, starting_balance: 0 });
+    if(error){ console.error(error); setStatus('Save failed'); return; }
+    setStatus('Synced');
+  }
+  sharedStartingBalances[name] = 0;
+  nameInput.value = '';
+  renderSourceInputsList();
+  render();
+});
+
+async function removeSource(name){
+  if(supabaseClient){
+    setStatus('Saving…');
+    const { error } = await supabaseClient.from('source_balances').delete().eq('account', 'shared').eq('source', name);
+    if(error){ console.error(error); setStatus('Delete failed'); return; }
+    setStatus('Synced');
+  }
+  delete sharedStartingBalances[name];
+  renderSourceInputsList();
+  render();
+}
+
+document.getElementById('sbSaveBtn').addEventListener('click', async ()=>{
+  const inputs = document.querySelectorAll('.sb-input');
+  const updates = {};
+  inputs.forEach(inp=>{ updates[inp.dataset.name] = parseFloat(inp.value) || 0; });
+
+  if(supabaseClient){
+    setStatus('Saving…');
+    const rows = Object.entries(updates).map(([source, starting_balance])=>({ account: 'shared', source, starting_balance }));
+    if(rows.length){
+      const { error } = await supabaseClient.from('source_balances').upsert(rows);
+      if(error){ console.error(error); setStatus('Save failed'); return; }
+    }
+    setStatus('Synced');
+  }
+  Object.assign(sharedStartingBalances, updates);
+  document.getElementById('startingBalBox').style.display = 'none';
+  render();
+});
+
+async function removeTx(id){
+  if(editingId === id) cancelEdit();
+  const owner = ownerOf(id);
+  if(!supabaseClient){ data[owner].transactions = data[owner].transactions.filter(t=>t.id!==id); render(); return; }
+  setStatus('Saving…');
+  const { error } = await supabaseClient.from('transactions').delete().eq('id', id);
+  if(error){ console.error(error); setStatus('Delete failed'); return; }
+  data[owner].transactions = data[owner].transactions.filter(t=>t.id!==id);
+  setStatus('Synced');
+  render();
+}
+
+async function moveEntry(id, direction){
+  const owner = ownerOf(id);
+  const ym = todayStr().slice(0,7);
+  const group = data[owner].transactions.filter(t=>t.date.slice(0,7)===ym).sort((a,b)=>sortKey(b)-sortKey(a));
+  const idx = group.findIndex(t=>t.id===id);
+  const swapIdx = idx + direction;
+  if(idx===-1 || swapIdx<0 || swapIdx>=group.length) return;
+  const a = group[idx], b = group[swapIdx];
+  const aKey = sortKey(a), bKey = sortKey(b);
+  a.sort_order = bKey; b.sort_order = aKey;
+
+  if(supabaseClient){
+    setStatus('Saving…');
+    const [{error:e1},{error:e2}] = await Promise.all([
+      supabaseClient.from('transactions').update({ sort_order: a.sort_order }).eq('id', a.id),
+      supabaseClient.from('transactions').update({ sort_order: b.sort_order }).eq('id', b.id)
+    ]);
+    if(e1||e2){ console.error(e1||e2); setStatus('Save failed'); return; }
+    setStatus('Synced');
+  }
+  render();
+}
+
+function render(){
+  if(tab === 'personal' || tab === 'company'){
+    renderAccountPanel();
+  } else if(tab === 'creditcards'){
+    renderCreditCardsTab();
+  }
+  renderSummary();
+}
+
+function renderAccountPanel(){
+  const acc = data[tab];
+  const income = acc.transactions.filter(t=>t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
+  const expense = acc.transactions.filter(t=>t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+  const balance = income - expense;
+  const accent = tab==='personal' ? 'var(--personal)' : 'var(--company)';
+
+  const topStats = document.getElementById('topStats');
+  if(tab === 'personal'){
+    topStats.innerHTML = `
+      <div class="stat"><div class="lbl" style="color:${accent}">Balance</div><div class="val mono">${dfmt(balance)}</div></div>
+      <div class="stat"><div class="lbl" style="color:var(--green)">Income</div><div class="val mono">${dfmt(income)}</div></div>
+      <div class="stat"><div class="lbl" style="color:var(--red)">Expenses</div><div class="val mono">${dfmt(expense)}</div></div>`;
+  } else {
+    const expenses = acc.transactions.filter(t=>t.type==='expense');
+    const budgetedExp = expenses.filter(t=>(t.budget_status||'budgeted')!=='not_budgeted').reduce((s,t)=>s+Number(t.amount),0);
+    const notBudgetedExp = expenses.filter(t=>t.budget_status==='not_budgeted').reduce((s,t)=>s+Number(t.amount),0);
+    topStats.innerHTML = `
+      <div class="stat"><div class="lbl" style="color:${accent}">Budget Balance</div><div class="val mono">${dfmt(balance)}</div></div>
+      <div class="stat"><div class="lbl" style="color:var(--green)">Budgeted</div><div class="val mono">${dfmt(income)}</div></div>
+      <div class="stat"><div class="lbl" style="color:var(--muted)">Budgeted Expenses</div><div class="val mono">${dfmt(budgetedExp)}</div></div>
+      <div class="stat"><div class="lbl" style="color:var(--red)">Not Budgeted Expenses</div><div class="val mono">${dfmt(notBudgetedExp)}</div></div>`;
+  }
+
+  document.getElementById('goalLbl').textContent = LABELS[tab].goalLabel;
+
+  const savedTowardGoal = Math.max(balance,0);
+  const pct = acc.savingsTarget>0 ? Math.min(100,(savedTowardGoal/acc.savingsTarget)*100) : 0;
+  document.getElementById('goalFill').style.width = pct+'%';
+  document.getElementById('goalFill').style.background = accent;
+  document.getElementById('goalNum').textContent = fmt(savedTowardGoal)+' / '+fmt(acc.savingsTarget);
+  document.getElementById('goalBtn').style.color = accent;
+  document.getElementById('goalBtn').style.borderColor = accent;
+
+  renderSourceStats('sourceStats', 'totalAccountsCard');
+  renderSourceDropdown();
+
+  const installments = acc.transactions.filter(t=>t.recurrence==='installment' && t.total_amount!=null && t.paid_amount!=null);
+  const totalRemaining = installments.reduce((s,t)=>s+Math.max(Number(t.total_amount)-Number(t.paid_amount),0),0);
+  const instBox = document.getElementById('installmentSummary');
+  if(installments.length > 0){
+    instBox.style.display = '';
+    document.getElementById('installmentTotal').textContent = fmt(totalRemaining);
+  } else {
+    instBox.style.display = 'none';
+  }
+
+  const ym = todayStr().slice(0,7);
+  const currentMonth = acc.transactions.filter(t=>t.date.slice(0,7)===ym).sort((a,b)=>sortKey(b)-sortKey(a));
+  const otherMonths = acc.transactions.filter(t=>t.date.slice(0,7)!==ym);
+  const displayList = [...currentMonth, ...otherMonths];
+
+  const txList = document.getElementById('txList');
+  txList.innerHTML = '';
+  if(displayList.length === 0){
+    txList.innerHTML = '<div class="empty">No entries yet. Add your first one above.</div>';
+  } else {
+    displayList.forEach(t=>{
+      const row = document.createElement('div');
+      row.className = 'tx';
+      const rec = t.recurrence || 'one-time';
+      const showBadge = t.type === 'expense' && rec !== 'one-time';
+      let badgeText = showBadge ? RECURRENCE_LABEL[rec] : '';
+      if(rec === 'installment' && t.total_amount != null && t.paid_amount != null){
+        const remaining = Number(t.total_amount) - Number(t.paid_amount);
+        badgeText += ` — ${fmt(Math.max(remaining,0))} left`;
+      }
+      const isCurrentMonth = t.date.slice(0,7) === ym;
+      const posInGroup = isCurrentMonth ? currentMonth.findIndex(x=>x.id===t.id) : -1;
+      const arrows = isCurrentMonth ? `
+        <div class="order-arrows">
+          <button class="icon-btn" data-move="up" data-id="${t.id}" ${posInGroup<=0?'disabled':''} title="Move up">▲</button>
+          <button class="icon-btn" data-move="down" data-id="${t.id}" ${posInGroup>=currentMonth.length-1?'disabled':''} title="Move down">▼</button>
+        </div>` : '';
+
+      const hasItems = Array.isArray(t.line_items) && t.line_items.length > 0;
+      const extras = [];
+      if(t.receipt_url) extras.push(`<a href="${t.receipt_url}" target="_blank" rel="noopener" style="color:var(--personal);text-decoration:none;font-weight:600">📎 Receipt</a>`);
+      if(hasItems) extras.push(`<button class="cancel-link" data-toggle-items="${t.id}" style="text-decoration:none">🧾 ${t.line_items.length} items</button>`);
+      const extrasHtml = extras.length ? `<div class="meta" style="margin-top:3px">${extras.join(' · ')}</div>` : '';
+      const itemsBreakdown = hasItems ? `
+        <div id="items-${t.id}" style="display:none;margin-top:6px;padding:8px 10px;background:var(--bg1);border-radius:8px;font-size:12.5px">
+          ${t.line_items.map(i=>`<div style="display:flex;justify-content:space-between;padding:2px 0"><span>${escapeHtml(i.description)}</span><span class="mono">${fmt(i.amount)}</span></div>`).join('')}
+        </div>` : '';
+
+      row.innerHTML = `
+        ${arrows}
+        <div style="flex:1;min-width:0">
+          <div class="desc">${escapeHtml(t.description)}</div>
+          <div class="meta">${escapeHtml(t.category)} · ${t.date}${showBadge ? ` · <span style="color:${RECURRENCE_COLOR[rec]};font-weight:700">${badgeText}</span>` : ''}</div>
+          ${extrasHtml}
+          ${itemsBreakdown}
+        </div>
+        <div class="tx-actions">
+          <span class="amt" style="color:${t.type==='income'?'var(--green)':'var(--red)'}">${t.type==='income'?'+':'-'}${fmt(t.amount)}</span>
+          <button class="icon-btn" data-edit="${t.id}" title="Edit">✎</button>
+          <button class="icon-btn" data-del="${t.id}" title="Delete">✕</button>
+        </div>`;
+      row.querySelector('[data-del]').addEventListener('click', ()=>removeTx(t.id));
+      row.querySelector('[data-edit]').addEventListener('click', ()=>startEdit(t));
+      const toggleBtn = row.querySelector('[data-toggle-items]');
+      if(toggleBtn) toggleBtn.addEventListener('click', ()=>{
+        const el = document.getElementById(`items-${t.id}`);
+        el.style.display = el.style.display === 'none' ? '' : 'none';
+      });
+      const upBtn = row.querySelector('[data-move="up"]');
+      const downBtn = row.querySelector('[data-move="down"]');
+      if(upBtn) upBtn.addEventListener('click', ()=>moveEntry(t.id, -1));
+      if(downBtn) downBtn.addEventListener('click', ()=>moveEntry(t.id, 1));
+      txList.appendChild(row);
+    });
+  }
+
+  const totals = {};
+  acc.transactions.filter(t=>t.type==='expense').forEach(t=>{
+    totals[t.category] = (totals[t.category]||0) + Number(t.amount);
+  });
+  const entries = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+  const max = entries.length ? entries[0][1] : 1;
+  const catBars = document.getElementById('catBars');
+  catBars.innerHTML = '';
+  if(entries.length === 0){
+    catBars.innerHTML = '<div class="empty">No expenses logged yet.</div>';
+  } else {
+    entries.forEach(([name,val])=>{
+      const color = CATEGORY_COLORS[name] || '#8E9DC5';
+      const row = document.createElement('div');
+      row.className = 'cat-bar-row';
+      row.innerHTML = `
+        <div class="cat-lbl"><span>${escapeHtml(name)}</span><span class="mono">${fmt(val)}</span></div>
+        <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${(val/max)*100}%;background:${color}"></div></div>`;
+      catBars.appendChild(row);
+    });
+  }
+}
+
+function monthLabel(ym){
+  const [y,m] = ym.split('-');
+  const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${names[parseInt(m,10)-1]} ${y}`;
+}
+
+function renderMonthlyInto(acc, tbody){
+  const byMonth = {};
+  acc.transactions.forEach(t=>{
+    const ym = t.date.slice(0,7);
+    if(!byMonth[ym]) byMonth[ym] = { income:0, expense:0 };
+    if(t.type === 'income') byMonth[ym].income += Number(t.amount);
+    else byMonth[ym].expense += Number(t.amount);
+  });
+  const months = Object.keys(byMonth).sort((a,b)=> b.localeCompare(a));
+  tbody.innerHTML = '';
+  if(months.length === 0){
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--faint);font-style:italic">No entries yet.</td></tr>';
+    return;
+  }
+  months.forEach(ym=>{
+    const { income, expense } = byMonth[ym];
+    const saved = income - expense;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${monthLabel(ym)}</td>
+      <td class="mono" style="color:var(--green)">${fmt(income)}</td>
+      <td class="mono" style="color:var(--red)">${fmt(expense)}</td>
+      <td class="mono" style="color:${saved>=0?'var(--green)':'var(--red)'};font-weight:700">${saved>=0?'':'-'}${fmt(Math.abs(saved))}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function dedupeInstallments(transactions){
+  const byDesc = {};
+  transactions.filter(t=>t.recurrence==='installment' && t.total_amount!=null).forEach(t=>{
+    const key = t.description.trim().toLowerCase();
+    const existing = byDesc[key];
+    if(!existing || (t.date||'') > (existing.date||'') || new Date(t.created_at||0) > new Date(existing.created_at||0)){
+      byDesc[key] = t;
+    }
+  });
+  return Object.values(byDesc).map(t=>({...t, remaining: Math.max(Number(t.total_amount)-Number(t.paid_amount||0),0)}));
+}
+
+function renderSummary(){
+  renderSourceStats('summarySourceStats', 'summaryTotalAccountsCard');
+  renderMonthlyInto(data.personal, document.getElementById('summaryPersonalBody'));
+  renderMonthlyInto(data.company, document.getElementById('summaryCompanyBody'));
+  renderBudgetBreakdown();
+  renderCcSummary();
+
+  const personalInst = dedupeInstallments(data.personal.transactions).map(t=>({...t, _kind:'personal'}));
+  const companyInst = dedupeInstallments(data.company.transactions).map(t=>({...t, _kind:'company'}));
+  const cardInst = creditCards.flatMap(card=>{
+    const byDesc = {};
+    chargesForCard(card.id).filter(c=>c.charge_type==='installment' && c.total_amount!=null).forEach(c=>{
+      const key = c.description.trim().toLowerCase();
+      const existing = byDesc[key];
+      if(!existing || (c.date||'') > (existing.date||'') || new Date(c.created_at||0) > new Date(existing.created_at||0)){
+        byDesc[key] = c;
+      }
+    });
+    return Object.values(byDesc).map(c=>({
+      description: c.description,
+      category: `Credit Card: ${card.name}`,
+      remaining: Math.max(Number(c.total_amount)-Number(c.paid_amount||0),0),
+      _kind: 'card'
+    }));
+  });
+
+  const installments = [...personalInst, ...companyInst, ...cardInst];
+  const totalRemaining = installments.reduce((s,t)=>s+t.remaining,0);
+  document.getElementById('summaryInstallmentTotal').textContent = fmt(totalRemaining);
+
+  const byAccountEl = document.getElementById('summaryInstallmentByAccount');
+  byAccountEl.innerHTML = '';
+  if(installments.length > 1){
+    const personalTotal = personalInst.reduce((s,t)=>s+t.remaining,0);
+    const companyTotal = companyInst.reduce((s,t)=>s+t.remaining,0);
+    const cardTotal = cardInst.reduce((s,t)=>s+t.remaining,0);
+    byAccountEl.innerHTML = `
+      <div class="stat"><div class="lbl" style="color:var(--personal)">Personal</div><div class="val mono">${fmt(personalTotal)}</div></div>
+      <div class="stat"><div class="lbl" style="color:var(--company)">Company / Project</div><div class="val mono">${fmt(companyTotal)}</div></div>
+      <div class="stat"><div class="lbl" style="color:var(--cc)">Credit Cards</div><div class="val mono">${fmt(cardTotal)}</div></div>`;
+  }
+
+  const listEl = document.getElementById('summaryInstallmentList');
+  listEl.innerHTML = '';
+  if(installments.length === 0){
+    listEl.innerHTML = '<div class="empty">No installments logged yet.</div>';
+  } else {
+    const kindColor = { personal:'var(--personal)', company:'var(--company)', card:'var(--cc)' };
+    const kindLabel = { personal:'Personal', company:'Company / Project', card:'Credit Card' };
+    installments.sort((a,b)=>b.remaining-a.remaining).forEach(t=>{
+      const row = document.createElement('div');
+      row.className = 'tx';
+      row.innerHTML = `
+        <div>
+          <div class="desc">${escapeHtml(t.description)}</div>
+          <div class="meta"><span style="color:${kindColor[t._kind]};font-weight:700">${t._kind==='card' ? escapeHtml(t.category) : kindLabel[t._kind]}</span>${t._kind!=='card' ? ' · '+escapeHtml(t.category) : ''}</div>
+        </div>
+        <span class="amt" style="color:var(--red)">${fmt(t.remaining)} left</span>`;
+      listEl.appendChild(row);
+    });
+  }
+}
+
+function renderBudgetBreakdown(){
+  const byMonth = {};
+  data.company.transactions.filter(t=>t.type==='expense').forEach(t=>{
+    const ym = t.date.slice(0,7);
+    if(!byMonth[ym]) byMonth[ym] = { budgeted:0, notBudgeted:0 };
+    if(t.budget_status === 'not_budgeted') byMonth[ym].notBudgeted += Number(t.amount);
+    else byMonth[ym].budgeted += Number(t.amount);
+  });
+  const months = Object.keys(byMonth).sort((a,b)=> b.localeCompare(a));
+  const tbody = document.getElementById('summaryBudgetBody');
+  tbody.innerHTML = '';
+  if(months.length === 0){
+    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--faint);font-style:italic">No company expenses logged yet.</td></tr>';
+    return;
+  }
+  months.forEach(ym=>{
+    const { budgeted, notBudgeted } = byMonth[ym];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${monthLabel(ym)}</td>
+      <td class="mono" style="color:var(--muted)">${fmt(budgeted)}</td>
+      <td class="mono" style="color:var(--red)">${fmt(notBudgeted)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ── Credit Cards ────────────────────────────────────────────
+function chargesForCard(cardId){
+  return ccCharges.filter(c=>c.card_id===cardId);
+}
+
+function findPriorCcInstallment(cardId, desc){
+  const norm = desc.trim().toLowerCase();
+  if(!norm) return null;
+  const candidates = chargesForCard(cardId)
+    .filter(c=>c.charge_type==='installment' && c.total_amount!=null && c.description.trim().toLowerCase()===norm)
+    .sort((a,b)=> (b.date||'').localeCompare(a.date||'') || new Date(b.created_at||0)-new Date(a.created_at||0));
+  return candidates[0] || null;
+}
+
+function cardBalanceToPay(cardId){
+  const charges = chargesForCard(cardId);
+  const purchaseTotal = charges.filter(c=>c.charge_type==='purchase').reduce((s,c)=>s+Number(c.amount),0);
+  // For installments, only count the remaining balance of the latest entry per description (avoids double counting each payment)
+  const byDesc = {};
+  charges.filter(c=>c.charge_type==='installment' && c.total_amount!=null).forEach(c=>{
+    const key = c.description.trim().toLowerCase();
+    const existing = byDesc[key];
+    if(!existing || (c.date||'') > (existing.date||'') || new Date(c.created_at||0) > new Date(existing.created_at||0)){
+      byDesc[key] = c;
+    }
+  });
+  const installmentRemaining = Object.values(byDesc).reduce((s,c)=>s+Math.max(Number(c.total_amount)-Number(c.paid_amount||0),0),0);
+  return purchaseTotal + installmentRemaining;
+}
+
+function cardUpcomingBill(cardId){
+  const ym = todayStr().slice(0,7);
+  return chargesForCard(cardId).filter(c=>c.date.slice(0,7)===ym).reduce((s,c)=>s+Number(c.amount),0);
+}
+
+function totalUpcomingAllCards(){
+  return creditCards.reduce((s,card)=>s+cardUpcomingBill(card.id),0);
+}
+
+function renderCreditCardsTab(){
+  const totalLimit = creditCards.reduce((s,c)=>s+Number(c.card_limit||0),0);
+  const totalBalance = creditCards.reduce((s,c)=>s+cardBalanceToPay(c.id),0);
+  const totalUpcoming = totalUpcomingAllCards();
+  const totalAvailable = totalLimit - totalBalance;
+  document.getElementById('ccTopStats').innerHTML = `
+    <div class="stat"><div class="lbl" style="color:var(--cc)">Total Limit</div><div class="val mono">${fmt(totalLimit)}</div></div>
+    <div class="stat"><div class="lbl" style="color:var(--red)">Total Balance to Pay</div><div class="val mono">${fmt(totalBalance)}</div></div>
+    <div class="stat"><div class="lbl" style="color:var(--green)">Total Available Credit</div><div class="val mono">${fmt(totalAvailable)}</div></div>
+    <div class="stat"><div class="lbl" style="color:var(--muted)">Upcoming Bill (this month)</div><div class="val mono">${fmt(totalUpcoming)}</div></div>`;
+
+  const container = document.getElementById('ccCardsContainer');
+  container.innerHTML = '';
+  if(creditCards.length === 0){
+    container.innerHTML = '<div class="empty" style="margin-bottom:18px">No credit cards added yet — add one below.</div>';
+    return;
+  }
+
+  creditCards.forEach(card=>{
+    const balance = cardBalanceToPay(card.id);
+    const available = Number(card.card_limit||0) - balance;
+    const upcoming = cardUpcomingBill(card.id);
+    const charges = chargesForCard(card.id).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+
+    const wrap = document.createElement('div');
+    wrap.className = 'cc-card';
+    wrap.innerHTML = `
+      <div class="cc-card-header">
+        <div>
+          <div class="cc-card-title" id="ccTitle-${card.id}">${escapeHtml(card.name)}</div>
+          <div class="cc-card-sub" id="ccSub-${card.id}">${card.number ? '•••• '+escapeHtml(card.number) : 'No number saved'} · Due day ${card.due_day || '—'} · Limit ${fmt(card.card_limit)}</div>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button class="icon-btn" data-edit-card="${card.id}" title="Edit card">✎</button>
+          <button class="cancel-link" data-clear-card="${card.id}" style="text-decoration:none">Clear</button>
+          <button class="icon-btn" data-del-card="${card.id}" title="Delete card">✕</button>
+        </div>
+      </div>
+
+      <div id="ccEditBox-${card.id}" style="display:none;margin-bottom:14px;padding:12px;background:var(--card);border:1px solid var(--border);border-radius:10px">
+        <div class="form-row">
+          <input id="ccEditName-${card.id}" value="${escapeHtml(card.name)}" placeholder="Card name"/>
+          <input id="ccEditNumber-${card.id}" value="${escapeHtml(card.number||'')}" placeholder="Last 4 digits"/>
+          <input id="ccEditLimit-${card.id}" type="number" value="${card.card_limit||0}" placeholder="Limit"/>
+          <input id="ccEditDueDay-${card.id}" type="number" min="1" max="31" value="${card.due_day||''}" placeholder="Due day"/>
+          <button class="btn" data-save-card="${card.id}" style="background:var(--cc)">Save</button>
+        </div>
+      </div>
+
+      <div class="stats-flex" style="margin-bottom:14px">
+        <div class="stat"><div class="lbl" style="color:var(--red)">Balance to Pay</div><div class="val mono">${fmt(balance)}</div></div>
+        <div class="stat"><div class="lbl" style="color:var(--green)">Available Credit</div><div class="val mono">${fmt(available)}</div></div>
+        <div class="stat"><div class="lbl" style="color:var(--muted)">Upcoming Bill (this month)</div><div class="val mono">${fmt(upcoming)}</div></div>
+      </div>
+
+      <div class="form-row" style="margin-bottom:8px">
+        <input id="ccDesc-${card.id}" placeholder="Description"/>
+        <select id="ccType-${card.id}">
+          <option value="purchase">Purchase</option>
+          <option value="installment">Installment</option>
+        </select>
+        <input id="ccTotalAmt-${card.id}" type="number" placeholder="Total cost" style="display:none"/>
+        <input id="ccPaidAmt-${card.id}" type="number" placeholder="Paid so far" style="display:none"/>
+        <input id="ccAmt-${card.id}" type="number" placeholder="Amount"/>
+        <button class="btn" data-add-charge="${card.id}" style="background:var(--cc)">+ Add charge</button>
+      </div>
+      <div id="ccAutoInfo-${card.id}" style="display:none;font-size:12.5px;color:var(--muted);background:#EFEAFC;border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:10px"></div>
+
+      <div class="tx-list" id="ccCharges-${card.id}"></div>`;
+    container.appendChild(wrap);
+
+    const chargesList = wrap.querySelector(`#ccCharges-${card.id}`);
+    if(charges.length === 0){
+      chargesList.innerHTML = '<div class="empty">No charges logged yet.</div>';
+    } else {
+      charges.forEach(c=>{
+        const row = document.createElement('div');
+        row.className = 'tx';
+        let badge = c.charge_type === 'installment' ? 'Installment' : 'Purchase';
+        if(c.charge_type === 'installment' && c.total_amount!=null){
+          const remaining = Math.max(Number(c.total_amount)-Number(c.paid_amount||0),0);
+          badge += ` — ${fmt(remaining)} left`;
+        }
+        row.innerHTML = `
+          <div>
+            <div class="desc">${escapeHtml(c.description)}</div>
+            <div class="meta">${c.date} · <span style="color:var(--cc);font-weight:700">${badge}</span></div>
+          </div>
+          <div class="tx-actions">
+            <span class="amt" style="color:var(--red)">${fmt(c.amount)}</span>
+            <button class="icon-btn" data-del-charge="${c.id}" title="Delete">✕</button>
+          </div>`;
+        row.querySelector('[data-del-charge]').addEventListener('click', ()=>removeCcCharge(c.id));
+        chargesList.appendChild(row);
+      });
+    }
+
+    // wire up per-card controls
+    wrap.querySelector(`[data-edit-card="${card.id}"]`).addEventListener('click', ()=>{
+      const box = wrap.querySelector(`#ccEditBox-${card.id}`);
+      box.style.display = box.style.display === 'none' ? '' : 'none';
+    });
+    wrap.querySelector(`[data-save-card="${card.id}"]`).addEventListener('click', ()=>saveCard(card.id));
+    wrap.querySelector(`[data-del-card="${card.id}"]`).addEventListener('click', ()=>deleteCard(card.id));
+    wrap.querySelector(`[data-clear-card="${card.id}"]`).addEventListener('click', ()=>clearCard(card.id));
+    wrap.querySelector(`[data-add-charge="${card.id}"]`).addEventListener('click', ()=>addCcCharge(card.id));
+
+    const typeSel = wrap.querySelector(`#ccType-${card.id}`);
+    const descInp = wrap.querySelector(`#ccDesc-${card.id}`);
+    const amtInp = wrap.querySelector(`#ccAmt-${card.id}`);
+    const updateCcVisibility = ()=>{
+      const isInstallment = typeSel.value === 'installment';
+      const totalInp = wrap.querySelector(`#ccTotalAmt-${card.id}`);
+      const paidInp = wrap.querySelector(`#ccPaidAmt-${card.id}`);
+      const info = wrap.querySelector(`#ccAutoInfo-${card.id}`);
+      let prior = isInstallment ? findPriorCcInstallment(card.id, descInp.value) : null;
+      if(isInstallment && prior){
+        totalInp.style.display = 'none';
+        paidInp.style.display = 'none';
+        const paidBefore = Number(prior.paid_amount||0);
+        const currentAmt = parseFloat(amtInp.value) || 0;
+        const paidAfter = paidBefore + currentAmt;
+        const total = Number(prior.total_amount);
+        info.style.display = '';
+        info.textContent = `Found a previous "${prior.description}" installment — total ${fmt(total)}, paid to date ${fmt(paidBefore)}. After this: ${fmt(paidAfter)} paid, ${fmt(Math.max(total-paidAfter,0))} left.`;
+      } else {
+        totalInp.style.display = isInstallment ? '' : 'none';
+        paidInp.style.display = isInstallment ? '' : 'none';
+        info.style.display = 'none';
+      }
+    };
+    typeSel.addEventListener('change', updateCcVisibility);
+    descInp.addEventListener('input', updateCcVisibility);
+    amtInp.addEventListener('input', updateCcVisibility);
+  });
+}
+
+document.getElementById('ccAddCardBtn').addEventListener('click', async ()=>{
+  const name = document.getElementById('ccName').value.trim();
+  const number = document.getElementById('ccNumber').value.trim();
+  const limit = parseFloat(document.getElementById('ccLimit').value) || 0;
+  const dueDay = parseInt(document.getElementById('ccDueDay').value) || null;
+  if(!name) return;
+  const row = { name, number: number || null, card_limit: limit, due_day: dueDay };
+
+  if(!supabaseClient){
+    creditCards.push({ ...row, id: Date.now().toString() });
+  } else {
+    setStatus('Saving…');
+    const { data: inserted, error } = await supabaseClient.from('credit_cards').insert(row).select().single();
+    if(error){ console.error(error); setStatus('Save failed'); return; }
+    creditCards.push(inserted);
+    setStatus('Synced');
+  }
+  document.getElementById('ccName').value = '';
+  document.getElementById('ccNumber').value = '';
+  document.getElementById('ccLimit').value = '';
+  document.getElementById('ccDueDay').value = '';
+  render();
+});
+
+async function saveCard(cardId){
+  const name = document.getElementById(`ccEditName-${cardId}`).value.trim();
+  const number = document.getElementById(`ccEditNumber-${cardId}`).value.trim();
+  const limit = parseFloat(document.getElementById(`ccEditLimit-${cardId}`).value) || 0;
+  const dueDay = parseInt(document.getElementById(`ccEditDueDay-${cardId}`).value) || null;
+  if(!name) return;
+  const row = { name, number: number || null, card_limit: limit, due_day: dueDay };
+
+  if(supabaseClient){
+    setStatus('Saving…');
+    const { error } = await supabaseClient.from('credit_cards').update(row).eq('id', cardId);
+    if(error){ console.error(error); setStatus('Save failed'); return; }
+    setStatus('Synced');
+  }
+  const idx = creditCards.findIndex(c=>c.id===cardId);
+  if(idx>-1) creditCards[idx] = { ...creditCards[idx], ...row };
+  render();
+}
+
+async function deleteCard(cardId){
+  if(supabaseClient){
+    setStatus('Saving…');
+    const { error } = await supabaseClient.from('credit_cards').delete().eq('id', cardId);
+    if(error){ console.error(error); setStatus('Delete failed'); return; }
+    setStatus('Synced');
+  }
+  creditCards = creditCards.filter(c=>c.id!==cardId);
+  ccCharges = ccCharges.filter(c=>c.card_id!==cardId);
+  render();
+}
+
+async function clearCard(cardId){
+  const charges = chargesForCard(cardId);
+  if(charges.length === 0) return;
+  if(supabaseClient){
+    setStatus('Saving…');
+    const { error } = await supabaseClient.from('cc_charges').delete().eq('card_id', cardId);
+    if(error){ console.error(error); setStatus('Clear failed'); return; }
+    setStatus('Synced');
+  }
+  ccCharges = ccCharges.filter(c=>c.card_id!==cardId);
+  render();
+}
+
+async function addCcCharge(cardId){
+  const desc = document.getElementById(`ccDesc-${cardId}`).value.trim();
+  const type = document.getElementById(`ccType-${cardId}`).value;
+  const amt = parseFloat(document.getElementById(`ccAmt-${cardId}`).value);
+  if(!desc || !amt || amt<=0) return;
+
+  const row = { card_id: cardId, description: desc, date: todayStr(), charge_type: type, amount: amt };
+  if(type === 'installment'){
+    const prior = findPriorCcInstallment(cardId, desc);
+    if(prior){
+      row.total_amount = Number(prior.total_amount);
+      row.paid_amount = Number(prior.paid_amount||0) + amt;
+    } else {
+      const totalAmt = parseFloat(document.getElementById(`ccTotalAmt-${cardId}`).value);
+      const paidAmt = parseFloat(document.getElementById(`ccPaidAmt-${cardId}`).value);
+      row.total_amount = isNaN(totalAmt) ? null : totalAmt;
+      row.paid_amount = isNaN(paidAmt) ? null : paidAmt;
+    }
+  } else {
+    row.total_amount = null;
+    row.paid_amount = null;
+  }
+
+  if(!supabaseClient){
+    ccCharges.unshift({ ...row, id: Date.now().toString(), created_at: new Date().toISOString() });
+  } else {
+    setStatus('Saving…');
+    const { data: inserted, error } = await supabaseClient.from('cc_charges').insert(row).select().single();
+    if(error){ console.error(error); setStatus('Save failed'); return; }
+    ccCharges.unshift(inserted);
+    setStatus('Synced');
+  }
+  render();
+}
+
+async function removeCcCharge(chargeId){
+  if(supabaseClient){
+    setStatus('Saving…');
+    const { error } = await supabaseClient.from('cc_charges').delete().eq('id', chargeId);
+    if(error){ console.error(error); setStatus('Delete failed'); return; }
+    setStatus('Synced');
+  }
+  ccCharges = ccCharges.filter(c=>c.id!==chargeId);
+  render();
+}
+
+function renderCcSummary(){
+  const total = totalUpcomingAllCards();
+  document.getElementById('summaryCcUpcomingTotal').textContent = fmt(total);
+  const box = document.getElementById('summaryCcByCard');
+  box.innerHTML = '';
+  if(creditCards.length === 0){
+    box.innerHTML = '<div class="empty">No credit cards added yet.</div>';
+    return;
+  }
+  creditCards.forEach(card=>{
+    const div = document.createElement('div');
+    div.className = 'stat';
+    div.innerHTML = `<div class="lbl" style="color:var(--cc)">${escapeHtml(card.name)}</div><div class="val mono">${fmt(cardUpcomingBill(card.id))}</div>`;
+    box.appendChild(div);
+  });
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+loadAll();
+</script>
+</body>
+</html>
