@@ -1674,20 +1674,55 @@ function renderInstallmentsTab(){
   plans.forEach(t=>{
     const remaining = Math.max(Number(t.total_amount)-Number(t.paid_amount||0),0);
     const accentColor = t._account==='personal' ? 'var(--personal)' : 'var(--company)';
-    const row = document.createElement('div');
-    row.className = 'tx';
-    row.innerHTML = `
-      <div>
-        <div class="desc">${escapeHtml(t.description)}</div>
-        <div class="meta"><span style="color:${accentColor};font-weight:700">${t._account==='personal'?'Personal':'Company / Project'}</span> · ${escapeHtml(t.category)} · Total ${fmt(t.total_amount)} · Paid ${fmt(t.paid_amount||0)}</div>
+    const wrap = document.createElement('div');
+    wrap.style.marginBottom = '1px';
+    wrap.innerHTML = `
+      <div class="tx">
+        <div>
+          <div class="desc">${escapeHtml(t.description)}</div>
+          <div class="meta"><span style="color:${accentColor};font-weight:700">${t._account==='personal'?'Personal':'Company / Project'}</span> · ${escapeHtml(t.category)} · Total ${fmt(t.total_amount)} · Paid ${fmt(t.paid_amount||0)}</div>
+        </div>
+        <div class="tx-actions">
+          <span class="amt" style="color:var(--red)">${fmt(remaining)} left</span>
+          <button class="icon-btn" data-edit-inst="${t.id}" title="Edit">✎</button>
+          <button class="icon-btn" data-del-inst="${t.id}" title="Delete">✕</button>
+        </div>
       </div>
-      <div class="tx-actions">
-        <span class="amt" style="color:var(--red)">${fmt(remaining)} left</span>
-        <button class="icon-btn" data-del-inst="${t.id}" title="Delete">✕</button>
+      <div id="instEditBox-${t.id}" style="display:none;padding:10px 14px;background:var(--card);border:1px solid var(--inst)">
+        <div class="form-row">
+          <input id="instEditTotal-${t.id}" type="number" value="${t.total_amount}" placeholder="Total cost"/>
+          <input id="instEditPaid-${t.id}" type="number" value="${t.paid_amount||0}" placeholder="Paid so far"/>
+          <button class="btn" data-save-inst="${t.id}" style="background:var(--inst);color:#1A1400">Save</button>
+          <button class="cancel-link" data-cancel-inst="${t.id}">Cancel</button>
+        </div>
       </div>`;
-    row.querySelector('[data-del-inst]').addEventListener('click', ()=>removeTx(t.id));
-    listEl.appendChild(row);
+    wrap.querySelector('[data-del-inst]').addEventListener('click', ()=>removeTx(t.id));
+    wrap.querySelector('[data-edit-inst]').addEventListener('click', ()=>{
+      document.getElementById(`instEditBox-${t.id}`).style.display = '';
+    });
+    wrap.querySelector('[data-cancel-inst]').addEventListener('click', ()=>{
+      document.getElementById(`instEditBox-${t.id}`).style.display = 'none';
+    });
+    wrap.querySelector('[data-save-inst]').addEventListener('click', ()=>saveInstEdit(t.id, t._account));
+    listEl.appendChild(wrap);
   });
+}
+
+async function saveInstEdit(id, account){
+  const total = parseFloat(document.getElementById(`instEditTotal-${id}`).value);
+  const paid = parseFloat(document.getElementById(`instEditPaid-${id}`).value);
+  if(isNaN(total) || total<=0) return;
+  const row = { total_amount: total, paid_amount: isNaN(paid) ? 0 : paid };
+
+  if(supabaseClient){
+    setStatus('Saving…');
+    const { error } = await supabaseClient.from('transactions').update(row).eq('id', id);
+    if(error){ console.error(error); setStatus('Save failed'); return; }
+    setStatus('Synced');
+  }
+  const idx = data[account].transactions.findIndex(t=>t.id===id);
+  if(idx>-1) data[account].transactions[idx] = { ...data[account].transactions[idx], ...row };
+  render();
 }
 
 function escapeHtml(s){
