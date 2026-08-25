@@ -12,7 +12,7 @@
     --bg1:#0A1224; --bg2:#0E1830;
     --card:#111B33; --card-soft:#16223F;
     --border:#293A63; --ink:#EAF0FF; --muted:#93A2C9; --faint:#5E6E99;
-    --personal:#4C8DFF; --company:#22D3EE; --summary:#38BDF8; --cc:#A78BFA;
+    --personal:#4C8DFF; --company:#22D3EE; --summary:#38BDF8; --cc:#A78BFA; --inst:#FBBF24;
     --green:#34D399; --red:#F87171;
   }
   *{box-sizing:border-box;}
@@ -40,6 +40,7 @@
   .tab.active[data-t="company"]{color:var(--company);box-shadow:inset 0 3px 0 var(--company);}
   .tab.active[data-t="summary"]{color:var(--summary);box-shadow:inset 0 3px 0 var(--summary);}
   .tab.active[data-t="creditcards"]{color:var(--cc);box-shadow:inset 0 3px 0 var(--cc);}
+  .tab.active[data-t="installments"]{color:var(--inst);box-shadow:inset 0 3px 0 var(--inst);}
   .panel{
     background:var(--card);border:1px solid var(--border);border-radius:0;
     padding:30px;box-shadow:0 12px 32px rgba(0,0,0,.35);
@@ -48,6 +49,7 @@
   .panel.company{border-top:3px solid var(--company);}
   .panel.summary{border-top:3px solid var(--summary);}
   .panel.creditcards{border-top:3px solid var(--cc);}
+  .panel.installments{border-top:3px solid var(--inst);}
   .cc-card{background:var(--card-soft);border:1px solid var(--border);border-radius:0;padding:18px;margin-bottom:18px;}
   .cc-card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;flex-wrap:wrap;}
   .cc-card-title{font-family:'Sora',sans-serif;font-weight:700;font-size:16px;color:var(--ink);text-transform:uppercase;letter-spacing:.5px;}
@@ -147,6 +149,7 @@
     <div class="tab active" data-t="personal">Personal</div>
     <div class="tab" data-t="company">Company / Project</div>
     <div class="tab" data-t="creditcards">Credit Cards</div>
+    <div class="tab" data-t="installments">Installments</div>
     <div class="tab" data-t="summary">Summary</div>
   </div>
 
@@ -210,6 +213,9 @@
         <select id="fBudget" style="display:none">
           <option value="budgeted">Budgeted</option>
           <option value="not_budgeted">Not budgeted</option>
+        </select>
+        <select id="fInstallmentSelect" style="display:none">
+          <option value="">+ New installment</option>
         </select>
         <input id="fTotalAmt" type="number" placeholder="Total cost" style="display:none"/>
         <input id="fPaidAmt" type="number" placeholder="Paid so far" style="display:none"/>
@@ -295,6 +301,40 @@
         <button class="btn" id="ccAddCardBtn" style="background:var(--cc)">+ Add card</button>
       </div>
     </div>
+  </div>
+
+  <div class="panel installments" id="installmentsPanel" style="display:none">
+    <div class="form-box">
+      <div class="form-title">Add a previous installment</div>
+      <div class="form-row">
+        <select id="instAccount">
+          <option value="personal">Personal</option>
+          <option value="company">Company / Project</option>
+        </select>
+        <input id="instDesc" placeholder="Description (e.g. Laptop, Refrigerator)"/>
+        <select id="instCat">
+          <option value="Credit Card">Credit Card</option>
+          <option value="Bills">Bills</option>
+          <option value="Internet">Internet</option>
+          <option value="Car">Car</option>
+          <option value="Other">Other</option>
+        </select>
+        <input id="instCatOther" placeholder="Enter category" style="display:none"/>
+        <select id="instBudget" style="display:none">
+          <option value="budgeted">Budgeted</option>
+          <option value="not_budgeted">Not budgeted</option>
+        </select>
+        <input id="instTotal" type="number" placeholder="Total cost"/>
+        <input id="instPaid" type="number" placeholder="Paid so far"/>
+        <input id="instDate" type="date"/>
+        <select id="instSource"></select>
+        <button class="btn" id="instAddBtn" style="background:var(--inst);color:#1A1400">+ Add installment</button>
+      </div>
+      <div style="font-size:12px;color:var(--faint);margin-top:8px">This just records what's already owed — it won't count as a new expense today. Log future payments the normal way, from the Personal or Company expense form, and select this installment there.</div>
+    </div>
+
+    <div class="sec-title">Existing installments</div>
+    <div class="tx-list" id="instList" style="max-height:none"></div>
   </div>
 
   <footer>Synced with your Supabase database — the same numbers show up on every device you open this site from. Use the date field to log entries for past months. Only this month's entries can be reordered.</footer>
@@ -446,6 +486,7 @@ async function loadAll(){
 const panel = document.getElementById('panel');
 const summaryPanel = document.getElementById('summaryPanel');
 const creditCardsPanel = document.getElementById('creditCardsPanel');
+const installmentsPanel = document.getElementById('installmentsPanel');
 const tabsEl = document.getElementById('tabs');
 
 function setTab(t){
@@ -457,10 +498,13 @@ function setTab(t){
   panel.style.display = 'none';
   summaryPanel.style.display = 'none';
   creditCardsPanel.style.display = 'none';
+  installmentsPanel.style.display = 'none';
   if(t === 'summary'){
     summaryPanel.style.display = '';
   } else if(t === 'creditcards'){
     creditCardsPanel.style.display = '';
+  } else if(t === 'installments'){
+    installmentsPanel.style.display = '';
   } else {
     panel.style.display = '';
     panel.className = 'panel ' + t;
@@ -518,6 +562,19 @@ function updateFormVisibility(){
     ccInfo.style.display = 'none';
   }
 
+  const instSel = document.getElementById('fInstallmentSelect');
+  instSel.style.display = (isInstallment && !editingId) ? '' : 'none';
+  if(isInstallment && !editingId){
+    const plans = Array.from(new Set(
+      data[tab].transactions
+        .filter(t=>t.recurrence==='installment' && t.total_amount!=null)
+        .map(t=>t.description.trim())
+    )).sort((a,b)=>a.localeCompare(b));
+    const prevSel = instSel.value;
+    instSel.innerHTML = '<option value="">+ New installment</option>' + plans.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+    if(plans.includes(prevSel)) instSel.value = prevSel;
+  }
+
   const infoBox = document.getElementById('installmentAutoInfo');
   let prior = null;
   if(isInstallment && !editingId){
@@ -547,6 +604,12 @@ document.getElementById('fCat').addEventListener('change', updateFormVisibility)
 document.getElementById('fCcCard').addEventListener('change', updateFormVisibility);
 document.getElementById('fDesc').addEventListener('input', updateFormVisibility);
 document.getElementById('fAmt').addEventListener('input', updateFormVisibility);
+document.getElementById('fInstallmentSelect').addEventListener('change', e=>{
+  if(e.target.value){
+    document.getElementById('fDesc').value = e.target.value;
+  }
+  updateFormVisibility();
+});
 
 // ── Line items ──────────────────────────────────────────────
 let lineItems = [];
@@ -608,6 +671,7 @@ function resetForm(){
   document.getElementById('fSource').value = 'Bank 1';
   document.getElementById('fReceipt').value = '';
   document.getElementById('receiptLabelText').textContent = 'Attach receipt (photo or PDF)';
+  document.getElementById('fInstallmentSelect').value = '';
   lineItems = [];
   renderLineItems();
   updateFormVisibility();
@@ -934,6 +998,8 @@ function render(){
     renderAccountPanel();
   } else if(tab === 'creditcards'){
     renderCreditCardsTab();
+  } else if(tab === 'installments'){
+    renderInstallmentsTab();
   }
   renderSummary();
 }
@@ -1524,6 +1590,104 @@ async function viewReceipt(path){
   const { data, error } = await supabaseClient.storage.from('receipts').createSignedUrl(path, 120);
   if(error){ console.error(error); alert('Could not open receipt.'); return; }
   window.open(data.signedUrl, '_blank', 'noopener');
+}
+
+// ── Installments tab (backfilling previous installments) ──────
+function updateInstFormVisibility(){
+  const isCompany = document.getElementById('instAccount').value === 'company';
+  const isOther = document.getElementById('instCat').value === 'Other';
+  document.getElementById('instBudget').style.display = isCompany ? '' : 'none';
+  document.getElementById('instCatOther').style.display = isOther ? '' : 'none';
+}
+document.getElementById('instAccount').addEventListener('change', updateInstFormVisibility);
+document.getElementById('instCat').addEventListener('change', updateInstFormVisibility);
+
+function renderInstSourceDropdown(){
+  const names = sourceNames();
+  const sel = document.getElementById('instSource');
+  const prevVal = sel.value;
+  sel.innerHTML = names.map(name=>`<option value="${escapeHtml(name)}">${escapeHtml(name)} — ${fmt(sourceBalance(name))}</option>`).join('');
+  if(names.includes(prevVal)) sel.value = prevVal;
+}
+
+document.getElementById('instAddBtn').addEventListener('click', async ()=>{
+  const account = document.getElementById('instAccount').value;
+  const desc = document.getElementById('instDesc').value.trim();
+  const catSelect = document.getElementById('instCat').value;
+  const catOther = document.getElementById('instCatOther').value.trim();
+  const cat = catSelect === 'Other' ? (catOther || 'Other') : catSelect;
+  const total = parseFloat(document.getElementById('instTotal').value);
+  const paid = parseFloat(document.getElementById('instPaid').value) || 0;
+  const date = document.getElementById('instDate').value || todayStr();
+  const source = document.getElementById('instSource').value;
+  const budget_status = account === 'company' ? document.getElementById('instBudget').value : null;
+  if(!desc || !total || total<=0) return;
+
+  const row = {
+    account, date, description: desc, category: cat, type: 'expense', amount: 0,
+    recurrence: 'installment', total_amount: total, paid_amount: paid,
+    source: source || null, budget_status
+  };
+
+  if(!supabaseClient){
+    data[account].transactions.unshift({ ...row, id: Date.now().toString(), created_at: new Date().toISOString() });
+  } else {
+    setStatus('Saving…');
+    const { data: inserted, error } = await supabaseClient.from('transactions').insert(row).select().single();
+    if(error){ console.error(error); setStatus('Save failed'); return; }
+    data[account].transactions.unshift(inserted);
+    setStatus('Synced');
+  }
+  document.getElementById('instDesc').value = '';
+  document.getElementById('instCatOther').value = '';
+  document.getElementById('instTotal').value = '';
+  document.getElementById('instPaid').value = '';
+  document.getElementById('instDate').value = todayStr();
+  render();
+});
+
+function renderInstallmentsTab(){
+  document.getElementById('instDate').value = document.getElementById('instDate').value || todayStr();
+  renderInstSourceDropdown();
+  updateInstFormVisibility();
+
+  const all = [
+    ...data.personal.transactions.map(t=>({...t, _account:'personal'})),
+    ...data.company.transactions.map(t=>({...t, _account:'company'}))
+  ];
+  const byPlan = {};
+  all.filter(t=>t.recurrence==='installment' && t.total_amount!=null).forEach(t=>{
+    const key = t._account + '::' + t.description.trim().toLowerCase();
+    const existing = byPlan[key];
+    if(!existing || (t.date||'') > (existing.date||'') || new Date(t.created_at||0) > new Date(existing.created_at||0)){
+      byPlan[key] = t;
+    }
+  });
+  const plans = Object.values(byPlan).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+
+  const listEl = document.getElementById('instList');
+  listEl.innerHTML = '';
+  if(plans.length === 0){
+    listEl.innerHTML = '<div class="empty">No installments added yet.</div>';
+    return;
+  }
+  plans.forEach(t=>{
+    const remaining = Math.max(Number(t.total_amount)-Number(t.paid_amount||0),0);
+    const accentColor = t._account==='personal' ? 'var(--personal)' : 'var(--company)';
+    const row = document.createElement('div');
+    row.className = 'tx';
+    row.innerHTML = `
+      <div>
+        <div class="desc">${escapeHtml(t.description)}</div>
+        <div class="meta"><span style="color:${accentColor};font-weight:700">${t._account==='personal'?'Personal':'Company / Project'}</span> · ${escapeHtml(t.category)} · Total ${fmt(t.total_amount)} · Paid ${fmt(t.paid_amount||0)}</div>
+      </div>
+      <div class="tx-actions">
+        <span class="amt" style="color:var(--red)">${fmt(remaining)} left</span>
+        <button class="icon-btn" data-del-inst="${t.id}" title="Delete">✕</button>
+      </div>`;
+    row.querySelector('[data-del-inst]').addEventListener('click', ()=>removeTx(t.id));
+    listEl.appendChild(row);
+  });
 }
 
 function escapeHtml(s){
