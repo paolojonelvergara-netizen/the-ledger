@@ -307,6 +307,10 @@
     <div class="form-box">
       <div class="form-title">Add a previous installment</div>
       <div class="form-row">
+        <select id="instMethod">
+          <option value="bank">Paid with Bank / Cash Account</option>
+          <option value="cc">Paid with Credit Card</option>
+        </select>
         <select id="instAccount">
           <option value="personal">Personal</option>
           <option value="company">Company / Project</option>
@@ -328,9 +332,10 @@
         <input id="instPaid" type="number" placeholder="Paid so far"/>
         <input id="instDate" type="date"/>
         <select id="instSource"></select>
+        <select id="instCard" style="display:none"></select>
         <button class="btn" id="instAddBtn" style="background:var(--inst);color:#1A1400">+ Add installment</button>
       </div>
-      <div style="font-size:12px;color:var(--faint);margin-top:8px">This just records what's already owed — it won't count as a new expense today. Log future payments the normal way, from the Personal or Company expense form, and select this installment there.</div>
+      <div style="font-size:12px;color:var(--faint);margin-top:8px">This just records what's already owed — it won't count as a new expense today. Log future payments the normal way, from the Personal or Company expense form (or the Credit Cards tab), and select this installment there.</div>
     </div>
 
     <div class="sec-title">Existing installments</div>
@@ -1594,11 +1599,17 @@ async function viewReceipt(path){
 
 // ── Installments tab (backfilling previous installments) ──────
 function updateInstFormVisibility(){
+  const isCc = document.getElementById('instMethod').value === 'cc';
   const isCompany = document.getElementById('instAccount').value === 'company';
   const isOther = document.getElementById('instCat').value === 'Other';
-  document.getElementById('instBudget').style.display = isCompany ? '' : 'none';
-  document.getElementById('instCatOther').style.display = isOther ? '' : 'none';
+  document.getElementById('instAccount').style.display = isCc ? 'none' : '';
+  document.getElementById('instCat').style.display = isCc ? 'none' : '';
+  document.getElementById('instCatOther').style.display = (!isCc && isOther) ? '' : 'none';
+  document.getElementById('instBudget').style.display = (!isCc && isCompany) ? '' : 'none';
+  document.getElementById('instSource').style.display = isCc ? 'none' : '';
+  document.getElementById('instCard').style.display = isCc ? '' : 'none';
 }
+document.getElementById('instMethod').addEventListener('change', updateInstFormVisibility);
 document.getElementById('instAccount').addEventListener('change', updateInstFormVisibility);
 document.getElementById('instCat').addEventListener('change', updateInstFormVisibility);
 
@@ -1610,34 +1621,63 @@ function renderInstSourceDropdown(){
   if(names.includes(prevVal)) sel.value = prevVal;
 }
 
+function renderInstCardDropdown(){
+  const sel = document.getElementById('instCard');
+  const prevVal = sel.value;
+  if(creditCards.length === 0){
+    sel.innerHTML = '<option value="">No cards added yet</option>';
+    return;
+  }
+  sel.innerHTML = creditCards.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+  if(creditCards.some(c=>c.id===prevVal)) sel.value = prevVal;
+}
+
 document.getElementById('instAddBtn').addEventListener('click', async ()=>{
-  const account = document.getElementById('instAccount').value;
+  const method = document.getElementById('instMethod').value;
   const desc = document.getElementById('instDesc').value.trim();
-  const catSelect = document.getElementById('instCat').value;
-  const catOther = document.getElementById('instCatOther').value.trim();
-  const cat = catSelect === 'Other' ? (catOther || 'Other') : catSelect;
   const total = parseFloat(document.getElementById('instTotal').value);
   const paid = parseFloat(document.getElementById('instPaid').value) || 0;
   const date = document.getElementById('instDate').value || todayStr();
-  const source = document.getElementById('instSource').value;
-  const budget_status = account === 'company' ? document.getElementById('instBudget').value : null;
   if(!desc || !total || total<=0) return;
 
-  const row = {
-    account, date, description: desc, category: cat, type: 'expense', amount: 0,
-    recurrence: 'installment', total_amount: total, paid_amount: paid,
-    source: source || null, budget_status
-  };
-
-  if(!supabaseClient){
-    data[account].transactions.unshift({ ...row, id: Date.now().toString(), created_at: new Date().toISOString() });
+  if(method === 'cc'){
+    const cardId = document.getElementById('instCard').value;
+    if(!cardId){ return; }
+    const row = { card_id: cardId, description: desc, date, charge_type: 'installment', amount: 0, total_amount: total, paid_amount: paid };
+    if(!supabaseClient){
+      ccCharges.unshift({ ...row, id: Date.now().toString(), created_at: new Date().toISOString() });
+    } else {
+      setStatus('Saving…');
+      const { data: inserted, error } = await supabaseClient.from('cc_charges').insert(row).select().single();
+      if(error){ console.error(error); setStatus('Save failed'); return; }
+      ccCharges.unshift(inserted);
+      setStatus('Synced');
+    }
   } else {
-    setStatus('Saving…');
-    const { data: inserted, error } = await supabaseClient.from('transactions').insert(row).select().single();
-    if(error){ console.error(error); setStatus('Save failed'); return; }
-    data[account].transactions.unshift(inserted);
-    setStatus('Synced');
+    const account = document.getElementById('instAccount').value;
+    const catSelect = document.getElementById('instCat').value;
+    const catOther = document.getElementById('instCatOther').value.trim();
+    const cat = catSelect === 'Other' ? (catOther || 'Other') : catSelect;
+    const source = document.getElementById('instSource').value;
+    const budget_status = account === 'company' ? document.getElementById('instBudget').value : null;
+
+    const row = {
+      account, date, description: desc, category: cat, type: 'expense', amount: 0,
+      recurrence: 'installment', total_amount: total, paid_amount: paid,
+      source: source || null, budget_status
+    };
+
+    if(!supabaseClient){
+      data[account].transactions.unshift({ ...row, id: Date.now().toString(), created_at: new Date().toISOString() });
+    } else {
+      setStatus('Saving…');
+      const { data: inserted, error } = await supabaseClient.from('transactions').insert(row).select().single();
+      if(error){ console.error(error); setStatus('Save failed'); return; }
+      data[account].transactions.unshift(inserted);
+      setStatus('Synced');
+    }
   }
+
   document.getElementById('instDesc').value = '';
   document.getElementById('instCatOther').value = '';
   document.getElementById('instTotal').value = '';
@@ -1649,20 +1689,31 @@ document.getElementById('instAddBtn').addEventListener('click', async ()=>{
 function renderInstallmentsTab(){
   document.getElementById('instDate').value = document.getElementById('instDate').value || todayStr();
   renderInstSourceDropdown();
+  renderInstCardDropdown();
   updateInstFormVisibility();
 
   const all = [
-    ...data.personal.transactions.map(t=>({...t, _account:'personal'})),
-    ...data.company.transactions.map(t=>({...t, _account:'company'}))
+    ...data.personal.transactions.map(t=>({...t, _source:'ledger', _account:'personal'})),
+    ...data.company.transactions.map(t=>({...t, _source:'ledger', _account:'company'}))
   ];
   const byPlan = {};
   all.filter(t=>t.recurrence==='installment' && t.total_amount!=null).forEach(t=>{
-    const key = t._account + '::' + t.description.trim().toLowerCase();
+    const key = 'ledger::' + t._account + '::' + t.description.trim().toLowerCase();
     const existing = byPlan[key];
     if(!existing || (t.date||'') > (existing.date||'') || new Date(t.created_at||0) > new Date(existing.created_at||0)){
       byPlan[key] = t;
     }
   });
+
+  ccCharges.filter(c=>c.charge_type==='installment' && c.total_amount!=null).forEach(c=>{
+    const key = 'cc::' + c.card_id + '::' + c.description.trim().toLowerCase();
+    const existing = byPlan[key];
+    const tagged = { ...c, _source:'cc', _cardId: c.card_id };
+    if(!existing || (c.date||'') > (existing.date||'') || new Date(c.created_at||0) > new Date(existing.created_at||0)){
+      byPlan[key] = tagged;
+    }
+  });
+
   const plans = Object.values(byPlan).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
   const listEl = document.getElementById('instList');
@@ -1673,14 +1724,19 @@ function renderInstallmentsTab(){
   }
   plans.forEach(t=>{
     const remaining = Math.max(Number(t.total_amount)-Number(t.paid_amount||0),0);
-    const accentColor = t._account==='personal' ? 'var(--personal)' : 'var(--company)';
+    const isCc = t._source === 'cc';
+    const accentColor = isCc ? 'var(--cc)' : (t._account==='personal' ? 'var(--personal)' : 'var(--company)');
+    const tagLabel = isCc
+      ? `Credit Card: ${escapeHtml((creditCards.find(c=>c.id===t._cardId)||{}).name || 'Unknown card')}`
+      : (t._account==='personal' ? 'Personal' : 'Company / Project');
+    const catPart = isCc ? '' : ` · ${escapeHtml(t.category)}`;
     const wrap = document.createElement('div');
     wrap.style.marginBottom = '1px';
     wrap.innerHTML = `
       <div class="tx">
         <div>
           <div class="desc">${escapeHtml(t.description)}</div>
-          <div class="meta"><span style="color:${accentColor};font-weight:700">${t._account==='personal'?'Personal':'Company / Project'}</span> · ${escapeHtml(t.category)} · Total ${fmt(t.total_amount)} · Paid ${fmt(t.paid_amount||0)}</div>
+          <div class="meta"><span style="color:${accentColor};font-weight:700">${tagLabel}</span>${catPart} · Total ${fmt(t.total_amount)} · Paid ${fmt(t.paid_amount||0)}</div>
         </div>
         <div class="tx-actions">
           <span class="amt" style="color:var(--red)">${fmt(remaining)} left</span>
@@ -1696,23 +1752,39 @@ function renderInstallmentsTab(){
           <button class="cancel-link" data-cancel-inst="${t.id}">Cancel</button>
         </div>
       </div>`;
-    wrap.querySelector('[data-del-inst]').addEventListener('click', ()=>removeTx(t.id));
+    wrap.querySelector('[data-del-inst]').addEventListener('click', ()=>{
+      if(isCc) removeCcCharge(t.id); else removeTx(t.id);
+    });
     wrap.querySelector('[data-edit-inst]').addEventListener('click', ()=>{
       document.getElementById(`instEditBox-${t.id}`).style.display = '';
     });
     wrap.querySelector('[data-cancel-inst]').addEventListener('click', ()=>{
       document.getElementById(`instEditBox-${t.id}`).style.display = 'none';
     });
-    wrap.querySelector('[data-save-inst]').addEventListener('click', ()=>saveInstEdit(t.id, t._account));
+    wrap.querySelector('[data-save-inst]').addEventListener('click', ()=>saveInstEdit(t.id, isCc ? null : t._account, isCc));
     listEl.appendChild(wrap);
   });
 }
 
-async function saveInstEdit(id, account){
+async function saveInstEdit(id, account, isCc){
   const total = parseFloat(document.getElementById(`instEditTotal-${id}`).value);
   const paid = parseFloat(document.getElementById(`instEditPaid-${id}`).value);
   if(isNaN(total) || total<=0) return;
   const row = { total_amount: total, paid_amount: isNaN(paid) ? 0 : paid };
+
+  if(isCc){
+    if(supabaseClient){
+      setStatus('Saving…');
+      const { error } = await supabaseClient.from('cc_charges').update(row).eq('id', id);
+      if(error){ console.error(error); setStatus('Save failed'); return; }
+      setStatus('Synced');
+    }
+    const idx = ccCharges.findIndex(c=>c.id===id);
+    if(idx>-1) ccCharges[idx] = { ...ccCharges[idx], ...row };
+    render();
+    return;
+  }
+
 
   if(supabaseClient){
     setStatus('Saving…');
