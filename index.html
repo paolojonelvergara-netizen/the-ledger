@@ -56,6 +56,8 @@
   .cc-card-sub{font-size:12px;color:var(--faint);margin-top:2px;}
   .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-bottom:28px;background:var(--border);}
   .stats-flex{display:flex;flex-wrap:wrap;gap:1px;background:var(--border);}
+  .stats-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);margin-bottom:28px;}
+  @media(max-width:640px){.stats-grid3{grid-template-columns:1fr;}}
   .total-accounts-card{
     background:linear-gradient(135deg, var(--summary), var(--personal));
     border-radius:0;padding:22px 26px;color:#0A1224;
@@ -441,9 +443,9 @@ function toggleFigure(key){
   saveHiddenFigures();
   render();
 }
-function statCard(key, label, value, labelStyle){
+function statCard(key, label, value, labelStyle, wrapperStyle){
   const hidden = hiddenFigures.has(key);
-  return `<div class="stat" style="position:relative">
+  return `<div class="stat" style="position:relative;${wrapperStyle||''}">
     <button class="icon-btn" data-toggle-fig="${escapeHtml(key)}" style="position:absolute;top:6px;right:6px;font-size:11px;padding:2px 5px" title="${hidden?'Show':'Hide'} this figure">${hidden?'👁️':'🙈'}</button>
     <div class="lbl" style="${labelStyle||''}">${escapeHtml(label)}</div>
     <div class="val mono">${hidden ? '••••••' : fmt(value)}</div>
@@ -514,6 +516,17 @@ function setTab(t){
     panel.style.display = '';
     panel.className = 'panel ' + t;
     document.querySelector('#fType option[value="income"]').textContent = LABELS[t].incomeLabel;
+    const fTypeSel = document.getElementById('fType');
+    let reimbOpt = fTypeSel.querySelector('option[value="reimbursement"]');
+    if(t === 'company' && !reimbOpt){
+      reimbOpt = document.createElement('option');
+      reimbOpt.value = 'reimbursement';
+      reimbOpt.textContent = 'Reimbursement';
+      fTypeSel.appendChild(reimbOpt);
+    } else if(t !== 'company' && reimbOpt){
+      reimbOpt.remove();
+      if(fTypeSel.value === 'reimbursement') fTypeSel.value = 'expense';
+    }
   }
   render();
 }
@@ -733,7 +746,7 @@ document.getElementById('addBtn').addEventListener('click', async ()=>{
   const type = document.getElementById('fType').value;
   const catSelect = document.getElementById('fCat').value;
   const catOther = document.getElementById('fCatOther').value.trim();
-  const cat = type === 'income' ? LABELS[tab].incomeLabel : (catSelect === 'Other' ? (catOther || 'Other') : catSelect);
+  const cat = type === 'income' ? LABELS[tab].incomeLabel : (type === 'reimbursement' ? 'Reimbursement' : (catSelect === 'Other' ? (catOther || 'Other') : catSelect));
   const recurrence = type === 'income' ? 'one-time' : document.getElementById('fRecurrence').value;
   const amt = parseFloat(document.getElementById('fAmt').value);
   const date = document.getElementById('fDate').value || todayStr();
@@ -840,7 +853,7 @@ function sourceNames(){
 function sourceBalance(name){
   const start = Number(sharedStartingBalances[name] || 0);
   const all = allTransactions();
-  const income = all.filter(t=>t.source===name && t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
+  const income = all.filter(t=>t.source===name && (t.type==='income' || t.type==='reimbursement')).reduce((s,t)=>s+Number(t.amount),0);
   const expense = all.filter(t=>t.source===name && t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
   return start + income - expense;
 }
@@ -850,10 +863,10 @@ function accountsBreakdown(){
   const startingTotal = Array.from(names).reduce((s,n)=>s+Number(sharedStartingBalances[n]||0),0);
   let personalNet = 0, companyNet = 0;
   data.personal.transactions.forEach(t=>{
-    if(t.source && names.has(t.source)) personalNet += (t.type==='income' ? Number(t.amount) : -Number(t.amount));
+    if(t.source && names.has(t.source)) personalNet += ((t.type==='income'||t.type==='reimbursement') ? Number(t.amount) : -Number(t.amount));
   });
   data.company.transactions.forEach(t=>{
-    if(t.source && names.has(t.source)) companyNet += (t.type==='income' ? Number(t.amount) : -Number(t.amount));
+    if(t.source && names.has(t.source)) companyNet += ((t.type==='income'||t.type==='reimbursement') ? Number(t.amount) : -Number(t.amount));
   });
   return { startingTotal, personalNet, companyNet };
 }
@@ -1018,6 +1031,7 @@ function renderAccountPanel(){
 
   const topStats = document.getElementById('topStats');
   if(tab === 'personal'){
+    topStats.className = 'stats-flex';
     topStats.innerHTML =
       statCard('personal-balance', 'Balance', balance, `color:${accent}`) +
       statCard('personal-income', 'Income', income, 'color:var(--green)') +
@@ -1026,11 +1040,19 @@ function renderAccountPanel(){
     const expenses = acc.transactions.filter(t=>t.type==='expense');
     const budgetedExp = expenses.filter(t=>(t.budget_status||'budgeted')!=='not_budgeted').reduce((s,t)=>s+Number(t.amount),0);
     const notBudgetedExp = expenses.filter(t=>t.budget_status==='not_budgeted').reduce((s,t)=>s+Number(t.amount),0);
+    const reimbursed = acc.transactions.filter(t=>t.type==='reimbursement').reduce((s,t)=>s+Number(t.amount),0);
+    const forReimbursement = reimbursed - notBudgetedExp;
+    const projectMoneyLeft = balance + forReimbursement;
+
+    topStats.className = 'stats-grid3';
     topStats.innerHTML =
       statCard('company-balance', 'Budget Balance', balance, `color:${accent}`) +
       statCard('company-budgeted', 'Budgeted', income, 'color:var(--green)') +
       statCard('company-budgeted-exp', 'Budgeted Expenses', budgetedExp, 'color:var(--muted)') +
-      statCard('company-not-budgeted-exp', 'Not Budgeted Expenses', notBudgetedExp, 'color:var(--red)');
+      statCard('company-for-reimbursement', 'For Reimbursement', forReimbursement, 'color:var(--red)') +
+      statCard('company-reimbursed', 'Reimbursed', reimbursed, 'color:var(--green)') +
+      statCard('company-not-budgeted-exp', 'Not Budgeted Expenses', notBudgetedExp, 'color:var(--red)') +
+      statCard('company-money-left', 'Project Money Left', projectMoneyLeft, `color:${accent}`, 'grid-column:1 / -1');
   }
   wireFigureToggles(topStats);
 
@@ -1104,7 +1126,7 @@ function renderAccountPanel(){
           ${itemsBreakdown}
         </div>
         <div class="tx-actions">
-          <span class="amt" style="color:${t.type==='income'?'var(--green)':'var(--red)'}">${t.type==='income'?'+':'-'}${fmt(t.amount)}</span>
+          <span class="amt" style="color:${(t.type==='income'||t.type==='reimbursement')?'var(--green)':'var(--red)'}">${(t.type==='income'||t.type==='reimbursement')?'+':'-'}${fmt(t.amount)}</span>
           <button class="icon-btn" data-edit="${t.id}" title="Edit">✎</button>
           <button class="icon-btn" data-del="${t.id}" title="Delete">✕</button>
         </div>`;
