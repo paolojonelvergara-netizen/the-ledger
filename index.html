@@ -69,11 +69,6 @@
   .stat{padding:18px;background:var(--card-soft);border:none;border-radius:0;}
   .stat .lbl{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;}
   .stat .val{font-size:22px;font-weight:700;}
-  .goal-row{display:flex;align-items:center;gap:10px;margin-top:8px;}
-  .goal-track{flex:1;height:10px;background:var(--border);border-radius:0;overflow:hidden;}
-  .goal-fill{height:100%;transition:width .3s;}
-  .goal-num{font-size:13px;color:var(--muted);min-width:120px;text-align:right;font-weight:600;}
-  .goal-set{display:flex;gap:8px;margin-top:10px;}
   input,select,button{font-family:'Inter',sans-serif;font-size:14.5px;}
   input,select{padding:10px 12px;border:1.5px solid var(--border);border-radius:0;background:var(--card-soft);color:var(--ink);}
   input::placeholder{color:var(--faint);}
@@ -175,25 +170,20 @@
       </div>
     </div>
 
-    <div>
-      <div class="sec-title" id="goalLbl">Personal savings goal</div>
-      <div class="goal-row">
-        <div class="goal-track"><div class="goal-fill" id="goalFill" style="width:0%"></div></div>
-        <div class="goal-num mono" id="goalNum">0.00 / 0.00</div>
-      </div>
-      <div class="goal-set">
-        <input type="number" id="goalInput" placeholder="Set target amount" style="flex:1"/>
-        <button class="btn btn-outline" id="goalBtn">Set goal</button>
-      </div>
-    </div>
-
     <div id="installmentSummary" style="display:none;margin-top:18px;padding:14px 16px;background:var(--card-soft);border:1px solid var(--border);border-radius:0">
       <div class="sec-title" style="margin-bottom:6px">Installments outstanding</div>
       <div class="val mono" id="installmentTotal" style="font-size:20px;font-weight:700;color:var(--red)">0.00</div>
     </div>
 
     <div class="form-box" id="formBox">
-      <div class="form-title"><span id="formTitle">Add entry</span> <button class="cancel-link" id="cancelEditBtn" style="display:none">Cancel edit</button></div>
+      <div class="form-title">
+        <span id="formTitle">Add entry</span>
+        <span>
+          <button class="cancel-link" id="cancelEditBtn" style="display:none">Cancel edit</button>
+          <button class="btn" id="toggleAddEntryBtn" style="padding:7px 16px">+ Add Entry</button>
+        </span>
+      </div>
+      <div id="entryFieldsWrap" style="display:none">
       <div class="form-row">
         <input id="fDesc" placeholder="Description"/>
         <input id="fDate" type="date"/>
@@ -236,6 +226,7 @@
         <div class="form-title" style="margin-bottom:8px">Line items <button class="cancel-link" id="addLineItemBtn" style="text-decoration:none">+ Add item</button></div>
         <div id="lineItemsList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px"></div>
         <div id="lineItemsSum" style="font-size:12.5px;color:var(--muted)"></div>
+      </div>
       </div>
     </div>
 
@@ -307,7 +298,11 @@
 
   <div class="panel installments" id="installmentsPanel" style="display:none">
     <div class="form-box">
-      <div class="form-title">Add a previous installment</div>
+      <div class="form-title">
+        <span>Add a previous installment</span>
+        <button class="btn" id="toggleInstAddBtn" style="padding:7px 16px">+ Add Entry</button>
+      </div>
+      <div id="instFieldsWrap" style="display:none">
       <div class="form-row">
         <select id="instMethod">
           <option value="bank">Paid with Bank / Cash Account</option>
@@ -338,6 +333,7 @@
         <button class="btn" id="instAddBtn" style="background:var(--inst);color:#1A1400">+ Add installment</button>
       </div>
       <div style="font-size:12px;color:var(--faint);margin-top:8px">This just records what's already owed — it won't count as a new expense today. Log future payments the normal way, from the Personal or Company expense form (or the Credit Cards tab), and select this installment there.</div>
+      </div>
     </div>
 
     <div class="sec-title">Existing installments</div>
@@ -422,11 +418,11 @@ const CATEGORY_COLORS = {
 };
 const RECURRENCE_LABEL = { 'one-time': 'One-time', 'recurring': 'Recurring', 'installment': 'Installment' };
 const RECURRENCE_COLOR = { 'one-time': '#8E9DC5', 'recurring': '#1E8E5A', 'installment': '#2F6FED' };
-const LABELS = { personal: { name:'Personal', goalLabel:'Personal savings goal', incomeLabel:'Income' }, company: { name:'Company / Project', goalLabel:'Project reserve goal', incomeLabel:'Budgeted' } };
+const LABELS = { personal: { name:'Personal', incomeLabel:'Income' }, company: { name:'Company / Project', incomeLabel:'Budgeted' } };
 
 let data = {
-  personal: { savingsTarget:0, transactions:[] },
-  company: { savingsTarget:0, transactions:[] }
+  personal: { transactions:[] },
+  company: { transactions:[] }
 };
 let sharedStartingBalances = {};
 let creditCards = [];
@@ -465,18 +461,16 @@ async function loadAll(){
   if(!supabaseClient) { document.getElementById('fDate').value = todayStr(); render(); return; }
   setStatus('Syncing…');
   try{
-    const [{ data: txRows, error: txErr }, { data: goalRows, error: goalErr }, { data: sbRows, error: sbErr }, { data: cardRows, error: cardErr }, { data: chargeRows, error: chargeErr }] = await Promise.all([
+    const [{ data: txRows, error: txErr }, { data: sbRows, error: sbErr }, { data: cardRows, error: cardErr }, { data: chargeRows, error: chargeErr }] = await Promise.all([
       supabaseClient.from('transactions').select('*').order('date', { ascending:false }).order('created_at', { ascending:false }),
-      supabaseClient.from('goals').select('*'),
       supabaseClient.from('source_balances').select('*'),
       supabaseClient.from('credit_cards').select('*').order('created_at', { ascending:true }),
       supabaseClient.from('cc_charges').select('*').order('date', { ascending:false }).order('created_at', { ascending:false })
     ]);
-    if(txErr || goalErr || sbErr || cardErr || chargeErr) throw (txErr || goalErr || sbErr || cardErr || chargeErr);
+    if(txErr || sbErr || cardErr || chargeErr) throw (txErr || sbErr || cardErr || chargeErr);
 
     data.personal.transactions = txRows.filter(r=>r.account==='personal');
     data.company.transactions = txRows.filter(r=>r.account==='company');
-    (goalRows||[]).forEach(g=>{ if(data[g.account]) data[g.account].savingsTarget = g.target; });
     (sbRows||[]).forEach(s=>{ sharedStartingBalances[s.source] = Number(s.starting_balance); });
     creditCards = cardRows || [];
     ccCharges = chargeRows || [];
@@ -695,6 +689,15 @@ function resetForm(){
   updateFormVisibility();
 }
 
+function setEntryFormOpen(open){
+  document.getElementById('entryFieldsWrap').style.display = open ? '' : 'none';
+  document.getElementById('toggleAddEntryBtn').style.display = open ? 'none' : '';
+}
+document.getElementById('toggleAddEntryBtn').addEventListener('click', ()=>{
+  setEntryFormOpen(true);
+  document.getElementById('fDesc').focus();
+});
+
 function cancelEdit(){
   editingId = null;
   document.getElementById('formTitle').textContent = 'Add entry';
@@ -702,10 +705,12 @@ function cancelEdit(){
   document.getElementById('cancelEditBtn').style.display = 'none';
   document.getElementById('formBox').classList.remove('editing');
   resetForm();
+  setEntryFormOpen(false);
 }
 document.getElementById('cancelEditBtn').addEventListener('click', cancelEdit);
 
 function startEdit(t){
+  setEntryFormOpen(true);
   editingId = t.id;
   document.getElementById('fDesc').value = t.description;
   document.getElementById('fDate').value = t.date;
@@ -825,20 +830,6 @@ document.getElementById('addBtn').addEventListener('click', async ()=>{
   render();
 });
 
-document.getElementById('goalBtn').addEventListener('click', async ()=>{
-  const v = parseFloat(document.getElementById('goalInput').value);
-  if(isNaN(v) || v<0) return;
-  document.getElementById('goalInput').value='';
-
-  if(!supabaseClient){ data[tab].savingsTarget = v; render(); return; }
-
-  setStatus('Saving…');
-  const { error } = await supabaseClient.from('goals').upsert({ account: tab, target: v });
-  if(error){ console.error(error); setStatus('Save failed'); return; }
-  data[tab].savingsTarget = v;
-  setStatus('Synced');
-  render();
-});
 
 function allTransactions(){
   return [...data.personal.transactions, ...data.company.transactions];
@@ -946,6 +937,7 @@ document.getElementById('addSourceBtn').addEventListener('click', async ()=>{
 });
 
 async function removeSource(name){
+  if(!confirm(`Remove the account "${name}"? Past entries that used it will keep their history, but it won't be tracked going forward.`)) return;
   if(supabaseClient){
     setStatus('Saving…');
     const { error } = await supabaseClient.from('source_balances').delete().eq('account', 'shared').eq('source', name);
@@ -977,6 +969,7 @@ document.getElementById('sbSaveBtn').addEventListener('click', async ()=>{
 });
 
 async function removeTx(id){
+  if(!confirm('Delete this entry? This can\'t be undone.')) return;
   if(editingId === id) cancelEdit();
   const owner = ownerOf(id);
   if(!supabaseClient){ data[owner].transactions = data[owner].transactions.filter(t=>t.id!==id); render(); return; }
@@ -1041,12 +1034,13 @@ function renderAccountPanel(){
     const budgetedExp = expenses.filter(t=>(t.budget_status||'budgeted')!=='not_budgeted').reduce((s,t)=>s+Number(t.amount),0);
     const notBudgetedExp = expenses.filter(t=>t.budget_status==='not_budgeted').reduce((s,t)=>s+Number(t.amount),0);
     const reimbursed = acc.transactions.filter(t=>t.type==='reimbursement').reduce((s,t)=>s+Number(t.amount),0);
+    const companyBalance = income - budgetedExp;
     const forReimbursement = reimbursed - notBudgetedExp;
-    const projectMoneyLeft = balance + forReimbursement;
+    const projectMoneyLeft = companyBalance + forReimbursement;
 
     topStats.className = 'stats-grid3';
     topStats.innerHTML =
-      statCard('company-balance', 'Budget Balance', balance, `color:${accent}`) +
+      statCard('company-balance', 'Budget Balance', companyBalance, `color:${accent}`) +
       statCard('company-budgeted', 'Budgeted', income, 'color:var(--green)') +
       statCard('company-budgeted-exp', 'Budgeted Expenses', budgetedExp, 'color:var(--muted)') +
       statCard('company-for-reimbursement', 'For Reimbursement', forReimbursement, 'color:var(--red)') +
@@ -1055,16 +1049,6 @@ function renderAccountPanel(){
       statCard('company-money-left', 'Project Money Left', projectMoneyLeft, `color:${accent}`, 'grid-column:1 / -1');
   }
   wireFigureToggles(topStats);
-
-  document.getElementById('goalLbl').textContent = LABELS[tab].goalLabel;
-
-  const savedTowardGoal = Math.max(balance,0);
-  const pct = acc.savingsTarget>0 ? Math.min(100,(savedTowardGoal/acc.savingsTarget)*100) : 0;
-  document.getElementById('goalFill').style.width = pct+'%';
-  document.getElementById('goalFill').style.background = accent;
-  document.getElementById('goalNum').textContent = fmt(savedTowardGoal)+' / '+fmt(acc.savingsTarget);
-  document.getElementById('goalBtn').style.color = accent;
-  document.getElementById('goalBtn').style.borderColor = accent;
 
   renderSourceStats('sourceStats', 'totalAccountsCard');
   renderSourceDropdown();
@@ -1398,18 +1382,21 @@ function renderCreditCardsTab(){
         <div class="stat"><div class="lbl" style="color:var(--muted)">Upcoming Bill (this month)</div><div class="val mono">${fmt(upcoming)}</div></div>
       </div>
 
-      <div class="form-row" style="margin-bottom:8px">
-        <input id="ccDesc-${card.id}" placeholder="Description"/>
-        <select id="ccType-${card.id}">
-          <option value="purchase">Purchase</option>
-          <option value="installment">Installment</option>
-        </select>
-        <input id="ccTotalAmt-${card.id}" type="number" placeholder="Total cost" style="display:none"/>
-        <input id="ccPaidAmt-${card.id}" type="number" placeholder="Paid so far" style="display:none"/>
-        <input id="ccAmt-${card.id}" type="number" placeholder="Amount"/>
-        <button class="btn" data-add-charge="${card.id}" style="background:var(--cc)">+ Add charge</button>
+      <button class="btn" id="ccToggleAdd-${card.id}" style="background:var(--cc);margin-bottom:10px">+ Add Charge</button>
+      <div id="ccAddWrap-${card.id}" style="display:none">
+        <div class="form-row" style="margin-bottom:8px">
+          <input id="ccDesc-${card.id}" placeholder="Description"/>
+          <select id="ccType-${card.id}">
+            <option value="purchase">Purchase</option>
+            <option value="installment">Installment</option>
+          </select>
+          <input id="ccTotalAmt-${card.id}" type="number" placeholder="Total cost" style="display:none"/>
+          <input id="ccPaidAmt-${card.id}" type="number" placeholder="Paid so far" style="display:none"/>
+          <input id="ccAmt-${card.id}" type="number" placeholder="Amount"/>
+          <button class="btn" data-add-charge="${card.id}" style="background:var(--cc)">+ Add charge</button>
+        </div>
+        <div id="ccAutoInfo-${card.id}" style="display:none;font-size:12.5px;color:var(--muted);background:var(--card-soft);border:1px solid var(--cc);border-radius:0;padding:8px 12px;margin-bottom:10px"></div>
       </div>
-      <div id="ccAutoInfo-${card.id}" style="display:none;font-size:12.5px;color:var(--muted);background:var(--card-soft);border:1px solid var(--cc);border-radius:0;padding:8px 12px;margin-bottom:10px"></div>
 
       <div class="tx-list" id="ccCharges-${card.id}"></div>`;
     container.appendChild(wrap);
@@ -1449,6 +1436,10 @@ function renderCreditCardsTab(){
     wrap.querySelector(`[data-del-card="${card.id}"]`).addEventListener('click', ()=>deleteCard(card.id));
     wrap.querySelector(`[data-clear-card="${card.id}"]`).addEventListener('click', ()=>clearCard(card.id));
     wrap.querySelector(`[data-add-charge="${card.id}"]`).addEventListener('click', ()=>addCcCharge(card.id));
+    wrap.querySelector(`#ccToggleAdd-${card.id}`).addEventListener('click', ()=>{
+      wrap.querySelector(`#ccAddWrap-${card.id}`).style.display = '';
+      wrap.querySelector(`#ccToggleAdd-${card.id}`).style.display = 'none';
+    });
 
     const typeSel = wrap.querySelector(`#ccType-${card.id}`);
     const descInp = wrap.querySelector(`#ccDesc-${card.id}`);
@@ -1524,6 +1515,7 @@ async function saveCard(cardId){
 }
 
 async function deleteCard(cardId){
+  if(!confirm('Delete this credit card and all its charge history? This can\'t be undone.')) return;
   if(supabaseClient){
     setStatus('Saving…');
     const { error } = await supabaseClient.from('credit_cards').delete().eq('id', cardId);
@@ -1538,6 +1530,7 @@ async function deleteCard(cardId){
 async function clearCard(cardId){
   const charges = chargesForCard(cardId);
   if(charges.length === 0) return;
+  if(!confirm('Clear all charges on this card? Only do this after you\'ve logged the actual bill payment elsewhere. This can\'t be undone.')) return;
   if(supabaseClient){
     setStatus('Saving…');
     const { error } = await supabaseClient.from('cc_charges').delete().eq('card_id', cardId);
@@ -1584,6 +1577,7 @@ async function addCcCharge(cardId){
 }
 
 async function removeCcCharge(chargeId){
+  if(!confirm('Delete this charge? This can\'t be undone.')) return;
   if(supabaseClient){
     setStatus('Saving…');
     const { error } = await supabaseClient.from('cc_charges').delete().eq('id', chargeId);
@@ -1654,6 +1648,12 @@ function renderInstCardDropdown(){
   if(creditCards.some(c=>c.id===prevVal)) sel.value = prevVal;
 }
 
+document.getElementById('toggleInstAddBtn').addEventListener('click', ()=>{
+  document.getElementById('instFieldsWrap').style.display = '';
+  document.getElementById('toggleInstAddBtn').style.display = 'none';
+  document.getElementById('instDesc').focus();
+});
+
 document.getElementById('instAddBtn').addEventListener('click', async ()=>{
   const method = document.getElementById('instMethod').value;
   const desc = document.getElementById('instDesc').value.trim();
@@ -1705,6 +1705,8 @@ document.getElementById('instAddBtn').addEventListener('click', async ()=>{
   document.getElementById('instTotal').value = '';
   document.getElementById('instPaid').value = '';
   document.getElementById('instDate').value = todayStr();
+  document.getElementById('instFieldsWrap').style.display = 'none';
+  document.getElementById('toggleInstAddBtn').style.display = '';
   render();
 });
 
