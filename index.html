@@ -194,16 +194,6 @@
       <div class="form-row">
         <input id="fDesc" placeholder="Description"/>
         <input id="fDate" type="date"/>
-        <select id="fCat">
-          <option value="Credit Card">Credit Card</option>
-          <option value="Bills">Bills</option>
-          <option value="Internet">Internet</option>
-          <option value="Car">Car</option>
-          <option value="Other">Other</option>
-        </select>
-        <input id="fCatOther" placeholder="Enter category" style="display:none"/>
-        <select id="fCcCard" style="display:none"></select>
-        <div id="fCcCardInfo" style="display:none;flex-basis:100%;font-size:12.5px;color:var(--muted);background:var(--card-soft);border:1px solid var(--cc);border-radius:0;padding:8px 12px"></div>
         <select id="fRecurrence">
           <option value="one-time">One-time</option>
           <option value="recurring">Recurring</option>
@@ -220,6 +210,7 @@
         <input id="fPaidAmt" type="number" placeholder="Paid so far" style="display:none"/>
         <div id="installmentAutoInfo" style="display:none;flex-basis:100%;font-size:12.5px;color:var(--muted);background:var(--card-soft);border:1px solid var(--personal);border-radius:0;padding:8px 12px"></div>
         <select id="fSource"></select>
+        <div id="fCcCardInfo" style="display:none;flex-basis:100%;font-size:12.5px;color:var(--muted);background:var(--card-soft);border:1px solid var(--cc);border-radius:0;padding:8px 12px"></div>
         <input id="fAmt" type="number" placeholder="Amount"/>
         <select id="fType"><option value="expense">Expense</option><option value="income">Income</option></select>
         <label id="receiptLabel" style="flex:1 1 220px;display:flex;align-items:center;gap:8px;cursor:pointer;padding:9px 12px;border:1.5px dashed var(--border);border-radius:0;font-size:13.5px;color:var(--muted)">
@@ -243,7 +234,7 @@
         <div class="tx-list" id="txList"></div>
       </div>
       <div>
-        <div class="sec-title">Spending by category</div>
+        <div class="sec-title">Spending by payment type</div>
         <div class="cat-bars" id="catBars"></div>
       </div>
     </div>
@@ -320,14 +311,6 @@
           <option value="company">Company / Project</option>
         </select>
         <input id="instDesc" placeholder="Description (e.g. Laptop, Refrigerator)"/>
-        <select id="instCat">
-          <option value="Credit Card">Credit Card</option>
-          <option value="Bills">Bills</option>
-          <option value="Internet">Internet</option>
-          <option value="Car">Car</option>
-          <option value="Other">Other</option>
-        </select>
-        <input id="instCatOther" placeholder="Enter category" style="display:none"/>
         <select id="instBudget" style="display:none">
           <option value="budgeted">Budgeted</option>
           <option value="not_budgeted">Not budgeted</option>
@@ -416,13 +399,12 @@ async function initAuth(){
   });
 }
 
-const CATEGORY_COLORS = {
-  'Credit Card': '#D64545',
-  'Bills': '#E08A2E',
-  'Internet': '#16296E',
-  'Car': '#2F6FED',
-  'Other': '#8E9DC5'
-};
+const PAYMENT_TYPE_PALETTE = ['#4C8DFF','#22D3EE','#A78BFA','#E08A2E','#34D399','#F87171','#FBBF24','#38BDF8'];
+function colorForLabel(label){
+  let hash = 0;
+  for(let i=0;i<label.length;i++) hash = (hash*31 + label.charCodeAt(i)) % PAYMENT_TYPE_PALETTE.length;
+  return PAYMENT_TYPE_PALETTE[Math.abs(hash)];
+}
 const RECURRENCE_LABEL = { 'one-time': 'One-time', 'recurring': 'Recurring', 'installment': 'Installment' };
 const RECURRENCE_COLOR = { 'one-time': '#8E9DC5', 'recurring': '#1E8E5A', 'installment': '#2F6FED' };
 const LABELS = { personal: { name:'Personal', incomeLabel:'Income' }, company: { name:'Company / Project', incomeLabel:'Budgeted' } };
@@ -549,33 +531,23 @@ function findPriorInstallment(desc){
 function updateFormVisibility(){
   const isExpense = document.getElementById('fType').value === 'expense';
   const isInstallment = isExpense && document.getElementById('fRecurrence').value === 'installment';
-  const isOtherCat = isExpense && document.getElementById('fCat').value === 'Other';
   const isCompanyExpense = isExpense && tab === 'company';
-  const isCcCategory = isExpense && document.getElementById('fCat').value === 'Credit Card';
-  document.getElementById('fCat').style.display = isExpense ? '' : 'none';
-  document.getElementById('fCatOther').style.display = isOtherCat ? '' : 'none';
   document.getElementById('fRecurrence').style.display = isExpense ? '' : 'none';
   document.getElementById('fBudget').style.display = isCompanyExpense ? '' : 'none';
   document.getElementById('lineItemsSection').style.display = isExpense ? '' : 'none';
 
-  const ccSel = document.getElementById('fCcCard');
+  const srcVal = document.getElementById('fSource').value;
   const ccInfo = document.getElementById('fCcCardInfo');
-  ccSel.style.display = isCcCategory ? '' : 'none';
-  if(isCcCategory){
-    if(creditCards.length === 0){
-      ccSel.innerHTML = '<option value="">No cards added yet</option>';
-      ccInfo.style.display = '';
-      ccInfo.textContent = 'Add a card in the Credit Cards tab to link this expense to it.';
-    } else {
-      const prevVal = ccSel.value;
-      ccSel.innerHTML = creditCards.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
-      if(creditCards.some(c=>c.id===prevVal)) ccSel.value = prevVal;
-      const chosen = creditCards.find(c=>c.id===ccSel.value) || creditCards[0];
-      ccSel.value = chosen.id;
+  if(srcVal && srcVal.startsWith('card:')){
+    const cardId = srcVal.slice(5);
+    const chosen = creditCards.find(c=>c.id===cardId);
+    if(chosen){
       const balance = cardBalanceToPay(chosen.id);
       const upcoming = cardUpcomingBill(chosen.id);
       ccInfo.style.display = '';
       ccInfo.textContent = `${chosen.name} — Total due (incl. installments): ${fmt(balance)} · Upcoming this month: ${fmt(upcoming)}`;
+    } else {
+      ccInfo.style.display = 'none';
     }
   } else {
     ccInfo.style.display = 'none';
@@ -619,8 +591,7 @@ function updateFormVisibility(){
 }
 document.getElementById('fType').addEventListener('change', updateFormVisibility);
 document.getElementById('fRecurrence').addEventListener('change', updateFormVisibility);
-document.getElementById('fCat').addEventListener('change', updateFormVisibility);
-document.getElementById('fCcCard').addEventListener('change', updateFormVisibility);
+document.getElementById('fSource').addEventListener('change', updateFormVisibility);
 document.getElementById('fDesc').addEventListener('input', updateFormVisibility);
 document.getElementById('fAmt').addEventListener('input', updateFormVisibility);
 document.getElementById('fInstallmentSelect').addEventListener('change', e=>{
@@ -633,6 +604,26 @@ document.getElementById('fInstallmentSelect').addEventListener('change', e=>{
 // ── Line items ──────────────────────────────────────────────
 let lineItems = [];
 
+function paymentTypeLabel(val){
+  if(!val) return '';
+  if(val.startsWith('card:')){
+    const card = creditCards.find(c=>c.id===val.slice(5));
+    return card ? `💳 ${card.name}` : 'Credit Card';
+  }
+  return val;
+}
+
+function paymentTypeOptionsHtml(selected){
+  const names = sourceNames();
+  let html = '<option value="">Payment type…</option>';
+  html += names.map(name=>`<option value="${escapeHtml(name)}" ${selected===name?'selected':''}>${escapeHtml(name)}</option>`).join('');
+  creditCards.forEach(c=>{
+    const val = 'card:'+c.id;
+    html += `<option value="${val}" ${selected===val?'selected':''}>💳 ${escapeHtml(c.name)}</option>`;
+  });
+  return html;
+}
+
 function renderLineItems(){
   const list = document.getElementById('lineItemsList');
   list.innerHTML = '';
@@ -642,9 +633,11 @@ function renderLineItems(){
     row.innerHTML = `
       <input class="li-desc" placeholder="Item description" value="${escapeHtml(item.description)}" style="flex:2 1 160px"/>
       <input class="li-amt" type="number" placeholder="Amount" value="${item.amount}" style="flex:1 1 100px"/>
+      <select class="li-pay" style="flex:1 1 140px">${paymentTypeOptionsHtml(item.paymentType||'')}</select>
       <button class="icon-btn" title="Remove item">✕</button>`;
     row.querySelector('.li-desc').addEventListener('input', e=>{ lineItems[idx].description = e.target.value; });
     row.querySelector('.li-amt').addEventListener('input', e=>{ lineItems[idx].amount = parseFloat(e.target.value) || 0; updateLineItemsSum(); });
+    row.querySelector('.li-pay').addEventListener('change', e=>{ lineItems[idx].paymentType = e.target.value; });
     row.querySelector('.icon-btn').addEventListener('click', ()=>{ lineItems.splice(idx,1); renderLineItems(); });
     list.appendChild(row);
   });
@@ -666,7 +659,7 @@ function updateLineItemsSum(){
 }
 
 document.getElementById('addLineItemBtn').addEventListener('click', ()=>{
-  lineItems.push({ description:'', amount:0 });
+  lineItems.push({ description:'', amount:0, paymentType:'' });
   renderLineItems();
 });
 
@@ -681,18 +674,16 @@ function resetForm(){
   document.getElementById('fAmt').readOnly = false;
   document.getElementById('fTotalAmt').value='';
   document.getElementById('fPaidAmt').value='';
-  document.getElementById('fCatOther').value='';
   document.getElementById('fDate').value = todayStr();
-  document.getElementById('fCat').value = 'Credit Card';
   document.getElementById('fRecurrence').value = 'one-time';
   document.getElementById('fType').value = 'expense';
   document.getElementById('fBudget').value = 'budgeted';
-  document.getElementById('fSource').value = 'Bank 1';
   document.getElementById('fReceipt').value = '';
   document.getElementById('receiptLabelText').textContent = 'Attach receipt (photo or PDF)';
   document.getElementById('fInstallmentSelect').value = '';
   lineItems = [];
   renderLineItems();
+  renderSourceDropdown();
   updateFormVisibility();
 }
 
@@ -723,27 +714,20 @@ function startEdit(t){
   document.getElementById('fDate').value = t.date;
   document.getElementById('fType').value = t.type;
   if(t.type === 'expense'){
-    const knownCats = ['Credit Card','Bills','Internet','Car'];
-    if(knownCats.includes(t.category)){
-      document.getElementById('fCat').value = t.category;
-      document.getElementById('fCatOther').value = '';
-    } else {
-      document.getElementById('fCat').value = 'Other';
-      document.getElementById('fCatOther').value = t.category;
-    }
     document.getElementById('fRecurrence').value = t.recurrence || 'one-time';
     if(tab === 'company') document.getElementById('fBudget').value = t.budget_status || 'budgeted';
   }
   document.getElementById('fTotalAmt').value = t.total_amount != null ? t.total_amount : '';
   document.getElementById('fPaidAmt').value = t.paid_amount != null ? t.paid_amount : '';
   document.getElementById('fAmt').value = t.amount;
-  lineItems = Array.isArray(t.line_items) ? t.line_items.map(i=>({description:i.description, amount:Number(i.amount)||0})) : [];
+  lineItems = Array.isArray(t.line_items) ? t.line_items.map(i=>({description:i.description, amount:Number(i.amount)||0, paymentType:i.paymentType||''})) : [];
   renderLineItems();
   document.getElementById('fReceipt').value = '';
   document.getElementById('receiptLabelText').textContent = t.receipt_path ? 'Receipt attached — choose a file to replace' : 'Attach receipt (photo or PDF)';
+  renderSourceDropdown();
+  if(t.card_id){ document.getElementById('fSource').value = 'card:'+t.card_id; }
+  else if(t.source){ document.getElementById('fSource').value = t.source; }
   updateFormVisibility();
-  if(t.source) document.getElementById('fSource').value = t.source;
-  if(t.card_id){ document.getElementById('fCcCard').value = t.card_id; updateFormVisibility(); }
 
   document.getElementById('formTitle').textContent = 'Edit entry';
   document.getElementById('addBtn').textContent = 'Update entry';
@@ -756,16 +740,24 @@ function startEdit(t){
 document.getElementById('addBtn').addEventListener('click', async ()=>{
   const desc = document.getElementById('fDesc').value.trim();
   const type = document.getElementById('fType').value;
-  const catSelect = document.getElementById('fCat').value;
-  const catOther = document.getElementById('fCatOther').value.trim();
-  const cat = type === 'income' ? LABELS[tab].incomeLabel : (type === 'reimbursement' ? 'Reimbursement' : (catSelect === 'Other' ? (catOther || 'Other') : catSelect));
   const recurrence = type === 'income' ? 'one-time' : document.getElementById('fRecurrence').value;
   const amt = parseFloat(document.getElementById('fAmt').value);
   const date = document.getElementById('fDate').value || todayStr();
-  const source = document.getElementById('fSource').value;
+  const rawSrc = document.getElementById('fSource').value;
   if(!desc || !amt || amt<=0) return;
   const budgetStatus = (type === 'expense' && tab === 'company') ? document.getElementById('fBudget').value : null;
-  const cardId = (type === 'expense' && cat === 'Credit Card' && document.getElementById('fCcCard').value) ? document.getElementById('fCcCard').value : null;
+
+  let source = null, cardId = null, paymentLabel = null;
+  if(rawSrc && rawSrc.startsWith('card:')){
+    cardId = rawSrc.slice(5);
+    const card = creditCards.find(c=>c.id===cardId);
+    paymentLabel = card ? `Credit Card: ${card.name}` : 'Credit Card';
+  } else if(rawSrc){
+    source = rawSrc;
+    paymentLabel = rawSrc;
+  }
+  const cat = type === 'income' ? LABELS[tab].incomeLabel : (type === 'reimbursement' ? 'Reimbursement' : (paymentLabel || 'General'));
+
   const row = { account: tab, date, description: desc, category: cat, type, amount: amt, recurrence, source, budget_status: budgetStatus, card_id: cardId };
   if(recurrence === 'installment'){
     const prior = !editingId ? findPriorInstallment(desc) : null;
@@ -784,7 +776,7 @@ document.getElementById('addBtn').addEventListener('click', async ()=>{
   }
 
   row.line_items = (type === 'expense' && lineItems.length > 0)
-    ? lineItems.filter(i=>i.description.trim()).map(i=>({ description: i.description.trim(), amount: Number(i.amount)||0 }))
+    ? lineItems.filter(i=>i.description.trim()).map(i=>({ description: i.description.trim(), amount: Number(i.amount)||0, paymentType: i.paymentType || null }))
     : null;
   if(row.line_items && row.line_items.length === 0) row.line_items = null;
 
@@ -896,8 +888,13 @@ function renderSourceDropdown(){
   const names = sourceNames();
   const sel = document.getElementById('fSource');
   const prevVal = sel.value;
-  sel.innerHTML = names.map(name=>`<option value="${escapeHtml(name)}">${escapeHtml(name)} — ${fmt(sourceBalance(name))}</option>`).join('');
-  if(names.includes(prevVal)) sel.value = prevVal;
+  let html = '<optgroup label="Bank / Cash">' + names.map(name=>`<option value="${escapeHtml(name)}">${escapeHtml(name)} — ${fmt(sourceBalance(name))}</option>`).join('') + '</optgroup>';
+  if(creditCards.length > 0){
+    html += '<optgroup label="Credit Cards">' + creditCards.map(c=>`<option value="card:${c.id}">💳 ${escapeHtml(c.name)}</option>`).join('') + '</optgroup>';
+  }
+  sel.innerHTML = html;
+  const validVals = [...names, ...creditCards.map(c=>'card:'+c.id)];
+  if(validVals.includes(prevVal)) sel.value = prevVal;
 }
 
 function renderSourceInputsList(){
@@ -1105,7 +1102,7 @@ function renderAccountPanel(){
       const extrasHtml = extras.length ? `<div class="meta" style="margin-top:3px">${extras.join(' · ')}</div>` : '';
       const itemsBreakdown = hasItems ? `
         <div id="items-${t.id}" style="display:none;margin-top:6px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:0;font-size:12.5px">
-          ${t.line_items.map(i=>`<div style="display:flex;justify-content:space-between;padding:2px 0"><span>${escapeHtml(i.description)}</span><span class="mono">${fmt(i.amount)}</span></div>`).join('')}
+          ${t.line_items.map(i=>`<div style="display:flex;justify-content:space-between;padding:2px 0"><span>${escapeHtml(i.description)}${i.paymentType?` <span style="color:var(--faint)">· ${escapeHtml(paymentTypeLabel(i.paymentType))}</span>`:''}</span><span class="mono">${fmt(i.amount)}</span></div>`).join('')}
         </div>` : '';
 
       row.innerHTML = `
@@ -1150,7 +1147,7 @@ function renderAccountPanel(){
     catBars.innerHTML = '<div class="empty">No expenses logged yet.</div>';
   } else {
     entries.forEach(([name,val])=>{
-      const color = CATEGORY_COLORS[name] || '#8E9DC5';
+      const color = colorForLabel(name);
       const row = document.createElement('div');
       row.className = 'cat-bar-row';
       row.innerHTML = `
@@ -1624,17 +1621,13 @@ async function viewReceipt(path){
 function updateInstFormVisibility(){
   const isCc = document.getElementById('instMethod').value === 'cc';
   const isCompany = document.getElementById('instAccount').value === 'company';
-  const isOther = document.getElementById('instCat').value === 'Other';
   document.getElementById('instAccount').style.display = isCc ? 'none' : '';
-  document.getElementById('instCat').style.display = isCc ? 'none' : '';
-  document.getElementById('instCatOther').style.display = (!isCc && isOther) ? '' : 'none';
   document.getElementById('instBudget').style.display = (!isCc && isCompany) ? '' : 'none';
   document.getElementById('instSource').style.display = isCc ? 'none' : '';
   document.getElementById('instCard').style.display = isCc ? '' : 'none';
 }
 document.getElementById('instMethod').addEventListener('change', updateInstFormVisibility);
 document.getElementById('instAccount').addEventListener('change', updateInstFormVisibility);
-document.getElementById('instCat').addEventListener('change', updateInstFormVisibility);
 
 function renderInstSourceDropdown(){
   const names = sourceNames();
@@ -1684,10 +1677,8 @@ document.getElementById('instAddBtn').addEventListener('click', async ()=>{
     }
   } else {
     const account = document.getElementById('instAccount').value;
-    const catSelect = document.getElementById('instCat').value;
-    const catOther = document.getElementById('instCatOther').value.trim();
-    const cat = catSelect === 'Other' ? (catOther || 'Other') : catSelect;
     const source = document.getElementById('instSource').value;
+    const cat = source || 'General';
     const budget_status = account === 'company' ? document.getElementById('instBudget').value : null;
 
     const row = {
@@ -1708,7 +1699,6 @@ document.getElementById('instAddBtn').addEventListener('click', async ()=>{
   }
 
   document.getElementById('instDesc').value = '';
-  document.getElementById('instCatOther').value = '';
   document.getElementById('instTotal').value = '';
   document.getElementById('instPaid').value = '';
   document.getElementById('instDate').value = todayStr();
