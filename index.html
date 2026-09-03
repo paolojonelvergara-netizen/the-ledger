@@ -14,12 +14,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root{
     --bg1:#0A1224; --bg2:#0E1830;
     --card:#111B33; --card-soft:#16223F;
     --border:#293A63; --ink:#EAF0FF; --muted:#93A2C9; --faint:#5E6E99;
-    --personal:#4C8DFF; --company:#22D3EE; --summary:#38BDF8; --cc:#A78BFA; --inst:#FBBF24;
+    --personal:#4C8DFF; --company:#22D3EE; --summary:#38BDF8; --cc:#A78BFA; --inst:#FBBF24; --rec:#10B981;
     --green:#34D399; --red:#F87171;
   }
   *{box-sizing:border-box;}
@@ -48,6 +49,7 @@
   .tab.active[data-t="summary"]{color:var(--summary);box-shadow:inset 0 3px 0 var(--summary);}
   .tab.active[data-t="creditcards"]{color:var(--cc);box-shadow:inset 0 3px 0 var(--cc);}
   .tab.active[data-t="installments"]{color:var(--inst);box-shadow:inset 0 3px 0 var(--inst);}
+  .tab.active[data-t="receipts"]{color:var(--rec);box-shadow:inset 0 3px 0 var(--rec);}
   .panel{
     background:var(--card);border:1px solid var(--border);border-radius:0;
     padding:30px;box-shadow:0 12px 32px rgba(0,0,0,.35);
@@ -57,6 +59,7 @@
   .panel.summary{border-top:3px solid var(--summary);}
   .panel.creditcards{border-top:3px solid var(--cc);}
   .panel.installments{border-top:3px solid var(--inst);}
+  .panel.receipts{border-top:3px solid var(--rec);}
   .cc-card{background:var(--card-soft);border:1px solid var(--border);border-radius:0;padding:18px;margin-bottom:18px;}
   .cc-card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;flex-wrap:wrap;}
   .cc-card-title{font-family:'Sora',sans-serif;font-weight:700;font-size:16px;color:var(--ink);text-transform:uppercase;letter-spacing:.5px;}
@@ -154,6 +157,7 @@
     <div class="tab" data-t="company">Company / Project</div>
     <div class="tab" data-t="creditcards">Credit Cards</div>
     <div class="tab" data-t="installments">Installments</div>
+    <div class="tab" data-t="receipts">Receipts</div>
     <div class="tab" data-t="summary">Summary</div>
   </div>
 
@@ -330,6 +334,16 @@
     <div class="tx-list" id="instList" style="max-height:none"></div>
   </div>
 
+  <div class="panel receipts" id="receiptsPanel" style="display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer">
+        <input type="checkbox" id="receiptsSelectAll"/> Select all
+      </label>
+      <button class="btn" id="downloadSelectedBtn" style="background:var(--rec)" disabled>Download selected (0)</button>
+    </div>
+    <div id="receiptsList" style="display:flex;flex-direction:column;gap:1px;background:var(--border)"></div>
+  </div>
+
   <footer>Synced with your Supabase database — the same numbers show up on every device you open this site from. Use the date field to log entries for past months. Only this month's entries can be reordered.</footer>
 
   </div>
@@ -477,6 +491,7 @@ const panel = document.getElementById('panel');
 const summaryPanel = document.getElementById('summaryPanel');
 const creditCardsPanel = document.getElementById('creditCardsPanel');
 const installmentsPanel = document.getElementById('installmentsPanel');
+const receiptsPanel = document.getElementById('receiptsPanel');
 const tabsEl = document.getElementById('tabs');
 
 function setTab(t){
@@ -489,12 +504,15 @@ function setTab(t){
   summaryPanel.style.display = 'none';
   creditCardsPanel.style.display = 'none';
   installmentsPanel.style.display = 'none';
+  receiptsPanel.style.display = 'none';
   if(t === 'summary'){
     summaryPanel.style.display = '';
   } else if(t === 'creditcards'){
     creditCardsPanel.style.display = '';
   } else if(t === 'installments'){
     installmentsPanel.style.display = '';
+  } else if(t === 'receipts'){
+    receiptsPanel.style.display = '';
   } else {
     panel.style.display = '';
     panel.className = 'panel ' + t;
@@ -1015,6 +1033,8 @@ function render(){
     renderCreditCardsTab();
   } else if(tab === 'installments'){
     renderInstallmentsTab();
+  } else if(tab === 'receipts'){
+    renderReceiptsTab();
   }
   renderSummary();
 }
@@ -1616,6 +1636,121 @@ async function viewReceipt(path){
   if(error){ console.error(error); alert('Could not open receipt.'); return; }
   window.open(data.signedUrl, '_blank', 'noopener');
 }
+
+// ── Receipts tab (view & batch download) ───────────────────────
+let selectedReceiptIds = new Set();
+
+function receiptFileName(t){
+  const ext = (t.receipt_path.split('.').pop() || 'dat').toLowerCase();
+  let base = (t.description || 'receipt').trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  if(!base) base = 'receipt';
+  if(base.length > 60) base = base.slice(0, 60);
+  return `${base}_${t.date}.${ext}`;
+}
+
+function allReceiptEntries(){
+  return [
+    ...data.personal.transactions.filter(t=>t.receipt_path).map(t=>({...t, _account:'personal'})),
+    ...data.company.transactions.filter(t=>t.receipt_path).map(t=>({...t, _account:'company'}))
+  ].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+}
+
+function renderReceiptsTab(){
+  const entries = allReceiptEntries();
+  const listEl = document.getElementById('receiptsList');
+  listEl.innerHTML = '';
+  selectedReceiptIds = new Set(Array.from(selectedReceiptIds).filter(id=>entries.some(e=>e.id===id)));
+
+  if(entries.length === 0){
+    listEl.innerHTML = '<div class="empty" style="padding:14px">No receipts uploaded yet.</div>';
+  } else {
+    entries.forEach(t=>{
+      const accentColor = t._account==='personal' ? 'var(--personal)' : 'var(--company)';
+      const row = document.createElement('div');
+      row.className = 'tx';
+      row.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">
+          <input type="checkbox" class="receipt-check" data-id="${t.id}" ${selectedReceiptIds.has(t.id)?'checked':''}/>
+          <div style="min-width:0">
+            <div class="desc">${escapeHtml(t.description)}</div>
+            <div class="meta"><span style="color:${accentColor};font-weight:700">${t._account==='personal'?'Personal':'Company / Project'}</span> · ${t.date} · ${escapeHtml(receiptFileName(t))}</div>
+          </div>
+        </div>
+        <div class="tx-actions">
+          <button class="cancel-link" data-view="${t.id}">View</button>
+        </div>`;
+      row.querySelector('.receipt-check').addEventListener('change', e=>{
+        if(e.target.checked) selectedReceiptIds.add(t.id); else selectedReceiptIds.delete(t.id);
+        updateReceiptSelectionUI();
+      });
+      row.querySelector('[data-view]').addEventListener('click', ()=>viewReceipt(t.receipt_path));
+      listEl.appendChild(row);
+    });
+  }
+  updateReceiptSelectionUI();
+}
+
+function updateReceiptSelectionUI(){
+  const entries = allReceiptEntries();
+  const btn = document.getElementById('downloadSelectedBtn');
+  btn.textContent = `Download selected (${selectedReceiptIds.size})`;
+  btn.disabled = selectedReceiptIds.size === 0;
+  const selectAll = document.getElementById('receiptsSelectAll');
+  selectAll.checked = entries.length > 0 && selectedReceiptIds.size === entries.length;
+}
+
+document.getElementById('receiptsSelectAll').addEventListener('change', e=>{
+  const entries = allReceiptEntries();
+  if(e.target.checked){ entries.forEach(t=>selectedReceiptIds.add(t.id)); }
+  else { selectedReceiptIds.clear(); }
+  renderReceiptsTab();
+});
+
+document.getElementById('downloadSelectedBtn').addEventListener('click', async ()=>{
+  if(!supabaseClient){ alert('Receipts require a live Supabase connection.'); return; }
+  const entries = allReceiptEntries().filter(t=>selectedReceiptIds.has(t.id));
+  if(entries.length === 0) return;
+
+  const btn = document.getElementById('downloadSelectedBtn');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Preparing…';
+
+  try{
+    if(entries.length === 1){
+      const t = entries[0];
+      const { data: signed, error } = await supabaseClient.storage.from('receipts').createSignedUrl(t.receipt_path, 120);
+      if(error) throw error;
+      const resp = await fetch(signed.signedUrl);
+      const blob = await resp.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = receiptFileName(t);
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } else {
+      const zip = new JSZip();
+      for(const t of entries){
+        const { data: signed, error } = await supabaseClient.storage.from('receipts').createSignedUrl(t.receipt_path, 120);
+        if(error) throw error;
+        const resp = await fetch(signed.signedUrl);
+        const blob = await resp.blob();
+        zip.file(receiptFileName(t), blob);
+      }
+      const zipBlob = await zip.generateAsync({ type:'blob' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(zipBlob);
+      a.download = `receipts_${todayStr()}.zip`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+  }catch(e){
+    console.error(e);
+    alert('Something went wrong preparing the download. Please try again.');
+  }
+  btn.disabled = false;
+  updateReceiptSelectionUI();
+});
 
 // ── Installments tab (backfilling previous installments) ──────
 function updateInstFormVisibility(){
